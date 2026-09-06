@@ -40,7 +40,7 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 | =herdr=              | Pop to =*herdr*=, launching =herdr= in Ghostel if needed (restarts if dead) |
 | =herdr-menu=         | Transient menu (below)                                                 |
 | =herdr-switch-agent= | Pick an agent, sorted blocked → done → working → idle → unknown; focus it |
-| =herdr-new-agent=    | New Herdr workspace for the current =project.el= project + start an agent in it |
+| =herdr-new-agent=    | Start an agent for the current =project.el= project: a new tab in the project's existing workspace, or a new workspace |
 | =herdr-goto-blocked= | Focus the first blocked agent                                          |
 | =herdr-send-region=  | Type the region into an agent's prompt (=C-u=: submit it)              |
 | =herdr-submit-region= | Same as =C-u herdr-send-region=                                       |
@@ -93,6 +93,7 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-default-agent-kind=        | ="claude"= | Default for =herdr-new-agent= (any =--kind= Herdr accepts)  |
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
 | =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
+| =herdr-sync-tab-labels=           | =t=        | Rename each agent's tab to its session name                |
 | =herdr-workspace-label-function=  | =identity= | Map the project name to the label, e.g. strip a prefix    |
 
 Example:
@@ -101,6 +102,10 @@ Example:
 (setopt herdr-workspace-label-function
         (lambda (name) (string-remove-prefix "acme-" name)))
 #+end_src
+
+Label sync follows Herdr's model — one workspace per project, one tab per agent: the
+workspace carries the project name and each agent's tab carries its session name
+(e.g. what =/rename= sets in Claude Code), so the tab bar tells the tasks apart.
 
 Polling stops by itself when the Herdr server is unreachable (one message, no spam)
 and resumes the next time you run =herdr=.

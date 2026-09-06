@@ -33,7 +33,7 @@
 ;;   `herdr'               pop to the *herdr* buffer, launching it if needed
 ;;   `herdr-menu'          transient menu; `herdr-menu-key' opens it globally
 ;;   `herdr-switch-agent'  completing-read over agents, sorted by attention
-;;   `herdr-new-agent'     start an agent in a new workspace for the project
+;;   `herdr-new-agent'     start an agent for the project (new tab or workspace)
 ;;   `herdr-goto-blocked'  focus the first agent waiting for input
 ;;   `herdr-send-region'   stage (or C-u submit) the region as a code block
 ;;   `herdr-mode'          poll timer and mode-line blocked count
@@ -75,6 +75,10 @@ alone."
   :type '(choice (const :tag "PROJECT" project)
                  (const :tag "PROJECT - SESSION" project-session)
                  (const :tag "Don't rename" nil)))
+
+(defcustom herdr-sync-tab-labels t
+  "Rename each agent's tab to the agent's session name (its terminal title)."
+  :type 'boolean)
 
 (defcustom herdr-workspace-label-function #'identity
   "Function mapping a project name to the workspace label shown in Herdr.
@@ -167,11 +171,15 @@ buffers.  Pressing it again inside the menu opens the *herdr* buffer."
 (defun herdr--extract-agents (json)
   "Agent alists from a `herdr api snapshot' JSON response."
   (when-let* ((snap (alist-get 'snapshot (alist-get 'result json))))
-    (let ((labels (mapcar (lambda (w)
-                            (cons (alist-get 'workspace_id w) (alist-get 'label w)))
-                          (alist-get 'workspaces snap))))
+    (let ((ws-labels (mapcar (lambda (w)
+                               (cons (alist-get 'workspace_id w) (alist-get 'label w)))
+                             (alist-get 'workspaces snap)))
+          (tab-labels (mapcar (lambda (tb)
+                                (cons (alist-get 'tab_id tb) (alist-get 'label tb)))
+                              (alist-get 'tabs snap))))
       (mapcar (lambda (a)
-                (let ((ws (alist-get 'workspace_id a)))
+                (let ((ws (alist-get 'workspace_id a))
+                      (tab (alist-get 'tab_id a)))
                   `((status . ,(or (alist-get 'agent_status a) "unknown"))
                     (name . ,(alist-get 'name a))
                     (kind . ,(alist-get 'agent a))
@@ -180,16 +188,29 @@ buffers.  Pressing it again inside the menu opens the *herdr* buffer."
                     (cwd . ,(or (alist-get 'foreground_cwd a) (alist-get 'cwd a)))
                     (pane-id . ,(alist-get 'pane_id a))
                     (workspace-id . ,ws)
-                    (workspace-label . ,(cdr (assoc ws labels)))
+                    (workspace-label . ,(cdr (assoc ws ws-labels)))
+                    (tab-id . ,tab)
+                    (tab-label . ,(cdr (assoc tab tab-labels)))
                     (seq . ,(or (alist-get 'state_change_seq a) 0)))))
               (alist-get 'agents snap)))))
 
+(defun herdr--workspace-for-root (root json)
+  "Workspace id whose panes run in ROOT, preferring the focused one, or nil."
+  (when-let* ((snap (alist-get 'snapshot (alist-get 'result json))))
+    (let* ((root (file-truename (file-name-as-directory root)))
+           (panes (seq-filter
+                   (lambda (p)
+                     (when-let* ((cwd (alist-get 'cwd p)))
+                       (equal (file-truename (file-name-as-directory cwd)) root)))
+                   (alist-get 'panes snap)))
+           (focused (seq-find (lambda (p) (eq (alist-get 'focused p) t)) panes)))
+      (alist-get 'workspace_id (or focused (car panes))))))
+
 (defun herdr--fetch-agents-sync ()
-  "Fetch agents from a live snapshot, syncing workspace labels on the way."
+  "Fetch agents from a live snapshot, syncing labels on the way."
   (let ((agents (herdr--extract-agents
                  (herdr--call-json-sync "api" "snapshot"))))
-    (when herdr-sync-workspace-labels
-      (herdr--sync-workspace-labels agents))
+    (herdr--sync-labels agents)
     agents))
 
 (defun herdr--sort-agents (agents)
@@ -256,6 +277,25 @@ Follows `herdr-sync-workspace-labels'."
          (if (and session (not (herdr--generic-title-p session (alist-get 'kind agent))))
              (format "%s - %s" project session)
            project))))))
+
+(defun herdr--sync-labels (agents)
+  "Sync workspace and tab labels for AGENTS as configured."
+  (when herdr-sync-workspace-labels
+    (herdr--sync-workspace-labels agents))
+  (when herdr-sync-tab-labels
+    (herdr--sync-tab-labels agents)))
+
+(defun herdr--sync-tab-labels (agents)
+  "Rename each agent's tab to its session name when it differs."
+  (let (seen)
+    (dolist (a agents)
+      (let ((tab (alist-get 'tab-id a))
+            (session (alist-get 'session a)))
+        (when (and tab session (not (member tab seen))
+                   (not (herdr--generic-title-p session (alist-get 'kind a))))
+          (push tab seen)
+          (unless (equal session (alist-get 'tab-label a))
+            (herdr--call-async #'ignore "tab" "rename" tab session)))))))
 
 (defun herdr--sync-workspace-labels (agents)
   "Rename each agent's workspace when its label differs from the desired one."
@@ -342,22 +382,31 @@ Follows `herdr-sync-workspace-labels'."
 
 ;;;###autoload
 (defun herdr-new-agent ()
-  "Start a new agent in its own Herdr workspace for the current project."
+  "Start a new agent for the current project.
+Adds a tab to the project's existing Herdr workspace, or creates the
+workspace when there is none."
   (interactive)
   (let* ((proj (project-current t))
          (root (expand-file-name (project-root proj)))
          (proj-name (herdr--project-name root))
          (kind (completing-read "Agent kind: " herdr--agent-kinds nil t
                                 nil nil herdr-default-agent-kind))
+         (json (herdr--call-json-sync "api" "snapshot"))
          (name (herdr--unique-agent-name
                 (herdr--sanitize-name (concat proj-name "-" kind))
-                (herdr--fetch-agents-sync)))
-         (ws (alist-get 'result (herdr--call-json-sync
-                                 "workspace" "create"
-                                 "--cwd" root "--label" proj-name "--focus")))
-         (pane (alist-get 'pane_id (alist-get 'root_pane ws))))
+                (herdr--extract-agents json)))
+         (ws (herdr--workspace-for-root root json))
+         (created (alist-get 'result
+                             (if ws
+                                 (herdr--call-json-sync
+                                  "tab" "create" "--workspace" ws
+                                  "--cwd" root "--label" kind "--focus")
+                               (herdr--call-json-sync
+                                "workspace" "create"
+                                "--cwd" root "--label" proj-name "--focus"))))
+         (pane (alist-get 'pane_id (alist-get 'root_pane created))))
     (unless pane
-      (user-error "Failed to create herdr workspace"))
+      (user-error "Failed to create herdr %s" (if ws "tab" "workspace")))
     (herdr--call-async
      (lambda (result)
        (message "herdr: %s %s in %s"
@@ -442,8 +491,7 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
          (let ((agents (herdr--extract-agents json)))
            (setq herdr--blocked-count
                  (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
-           (when herdr-sync-workspace-labels
-             (herdr--sync-workspace-labels agents))))
+           (herdr--sync-labels agents)))
        (force-mode-line-update t))
      "api" "snapshot")))
 
