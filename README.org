@@ -1,0 +1,143 @@
+#+title: herdr.el
+
+Emacs integration for [[https://herdr.dev][Herdr]], a tmux-like terminal multiplexer for AI coding agents.
+
+Herdr's full TUI, mouse UI included, runs in one [[https://github.com/dakra/ghostel][Ghostel]] buffer. Emacs adds the
+few things the mouse is slow at: a transient menu, an attention-sorted agent picker,
+one-key "start an agent for this project", a blocked-agent indicator in the mode-line,
+and sending the region to an agent as a fenced code block with file/line/branch context.
+
+Everything goes through the =herdr= CLI. The raw socket API is never used.
+
+* Requirements
+
+- Emacs 29.1+ (transient is built in)
+- [[https://github.com/dakra/ghostel][ghostel]] (MELPA)
+- Herdr >= 0.8.2 — uses =herdr api snapshot=, =herdr agent prompt=, =herdr agent start --kind=
+  and the =terminal_title_stripped= field, none of which exist in 0.7.x
+
+* Install
+
+#+begin_src emacs-lisp
+(use-package herdr
+  :vc (:url "https://github.com/baongoc124/emacs-herdr")
+  :hook (after-init . herdr-mode)
+  :custom ((herdr-menu-key "C-9")))
+#+end_src
+
+Or from a checkout with =:load-path "~/builds/emacs-herdr"=.
+
+=herdr-mode= owns the poll timer and the mode-line segment, and binds =herdr-menu-key=
+globally. The key is also added to =ghostel-keymap-exceptions= so it reaches Emacs from
+inside =*herdr*= (and any other Ghostel terminal) in semi-char mode. In Ghostel /char/
+mode every key goes to the terminal; press =M-RET= first.
+
+* Usage
+
+| Command              | What it does                                                           |
+|----------------------+------------------------------------------------------------------------|
+| =herdr=              | Pop to =*herdr*=, launching =herdr= in Ghostel if needed (restarts if dead) |
+| =herdr-menu=         | Transient menu (below)                                                 |
+| =herdr-switch-agent= | Pick an agent, sorted blocked → done → working → idle → unknown; focus it |
+| =herdr-new-agent=    | New Herdr workspace for the current =project.el= project + start an agent in it |
+| =herdr-goto-blocked= | Focus the first blocked agent                                          |
+| =herdr-send-region=  | Type the region into an agent's prompt (=C-u=: submit it)              |
+| =herdr-submit-region= | Same as =C-u herdr-send-region=                                       |
+| =herdr-mode=         | Global minor mode: timer, mode-line =● N=, menu key                    |
+
+** The menu
+
+Pressing =herdr-menu-key= opens it; pressing the same key again opens =*herdr*=.
+
+| Key     | Action                                   |
+|---------+------------------------------------------|
+| menu key | Open Herdr                              |
+| =o=     | Open Herdr                               |
+| =s=     | Switch agent                             |
+| =n=     | New agent for project                    |
+| =b=     | Blocked (shows the live count)           |
+| =r=     | Send region (stage) — with an active region |
+| =R=     | Send region & submit — with an active region |
+| =m=     | Toggle =herdr-mode=                      |
+
+** Agent picker
+
+Candidates look like =[blocked] fix auth middleware (claude) · ~/work/api · w3:p2=:
+status, the agent's session name (its terminal title, e.g. what =/rename= sets in
+Claude Code), the agent kind, its working directory and pane id.
+
+** Sending a region
+
+The payload is a fenced block with language (from =major-mode=), project-relative path,
+line range, project root and git branch:
+
+#+begin_example
+```python src/api/auth.py L42-L67
+<region>
+```
+
+project: ~/work/api
+branch: feature/auth
+#+end_example
+
+Staging uses =herdr pane send-text= (multiline is inserted without submitting);
+submitting uses =herdr agent prompt=, which is refused while the agent is blocked.
+
+* Customization
+
+| Variable                          | Default    | Meaning                                                    |
+|-----------------------------------+------------+------------------------------------------------------------|
+| =herdr-executable=                | ="herdr"=  | Binary to run                                              |
+| =herdr-poll-interval=             | =2=        | Seconds between =herdr api snapshot= polls                 |
+| =herdr-default-agent-kind=        | ="claude"= | Default for =herdr-new-agent= (any =--kind= Herdr accepts)  |
+| =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
+| =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
+| =herdr-workspace-label-function=  | =identity= | Map the project name to the label, e.g. strip a prefix    |
+
+Example:
+
+#+begin_src emacs-lisp
+(setopt herdr-workspace-label-function
+        (lambda (name) (string-remove-prefix "acme-" name)))
+#+end_src
+
+Polling stops by itself when the Herdr server is unreachable (one message, no spam)
+and resumes the next time you run =herdr=.
+
+* Suggested Herdr configuration
+
+With workspace labels synced to the project name, a sidebar layout that puts the
+session name first reads well (=~/.config/herdr/config.toml=, then
+=herdr server reload-config=):
+
+#+begin_src toml
+[ui.sidebar.agents]
+rows = [["state_icon", { token = "terminal_title_stripped", bold = true, dim = false }],
+        [{ token = "workspace", bold = false }, "state_text"]]
+#+end_src
+
+No keybinding changes are needed: Herdr's =ctrl+b= prefix works as-is in Ghostel.
+
+* Known issue: pane width changes corrupt agent output (Herdr bug)
+
+Herdr's server-side terminal mishandles a row written exactly pane-width followed by
+erase-line and a rewrite — the sequence ink-based TUIs such as Claude Code use to redraw
+full-width diff rows. The erased row survives as a duplicate, and once the pane /width/
+changes Herdr re-wraps those lines, producing blank colored bars and lines merged with
+their successor. The same bytes render correctly in libghostty-vt itself (Ghostel), so
+the fault is in Herdr, not the VT library or Emacs.
+
+Minimal repro in any Herdr pane (=W= = pane width):
+
+#+begin_src sh
+printf 'X%.0s' $(seq W); printf '\e[2K\e[G'; printf 'X%.0s' $(seq W); echo; echo NEXT
+# expected: one row of X then NEXT — Herdr shows two rows of X
+#+end_src
+
+Mitigation in this package: the =*herdr*= buffer sets =split-width-threshold= to nil so
+popups open below it instead of beside it, which was the usual source of accidental
+width changes. Avoid resizing the =*herdr*= window horizontally beyond that.
+
+* License
+
+GPL-3.0-or-later. See =LICENSE=.
