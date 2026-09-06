@@ -27,10 +27,11 @@ Everything goes through the =herdr= CLI. The raw socket API is never used.
 
 Or from a checkout with =:load-path "~/builds/emacs-herdr"=.
 
-=herdr-mode= owns the poll timer and the mode-line segment, and binds =herdr-menu-key=
-globally. The key is also added to =ghostel-keymap-exceptions= so it reaches Emacs from
-inside =*herdr*= (and any other Ghostel terminal) in semi-char mode. In Ghostel /char/
-mode every key goes to the terminal; press =M-RET= first.
+=herdr-menu-key= is bound globally as soon as it is set, independently of =herdr-mode=
+(so toggling the mode from the menu never takes the key away). It is also added to
+=ghostel-keymap-exceptions= so it reaches Emacs from inside =*herdr*= (and any other
+Ghostel terminal) in semi-char mode. In Ghostel /char/ mode every key goes to the
+terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-line segment.
 
 * Usage
 

@@ -36,7 +36,7 @@
 ;;   `herdr-new-agent'     start an agent in a new workspace for the project
 ;;   `herdr-goto-blocked'  focus the first agent waiting for input
 ;;   `herdr-send-region'   stage (or C-u submit) the region as a code block
-;;   `herdr-mode'          poll timer, mode-line blocked count, key binding
+;;   `herdr-mode'          poll timer and mode-line blocked count
 ;;
 ;; Everything goes through the `herdr' CLI (>= 0.8), never the raw socket.
 
@@ -81,12 +81,30 @@ alone."
 For example (lambda (name) (string-remove-prefix \"ktzn-\" name))."
   :type 'function)
 
+(defun herdr--bind-menu-key (key bind)
+  "Bind KEY to `herdr-menu' globally and in Ghostel, or unbind when BIND is nil."
+  (when key
+    (if bind
+        (progn
+          (keymap-global-set key #'herdr-menu)
+          (unless (member key ghostel-keymap-exceptions)
+            (setopt ghostel-keymap-exceptions
+                    (append ghostel-keymap-exceptions (list key)))))
+      (when (eq (keymap-global-lookup key) #'herdr-menu)
+        (keymap-global-unset key))
+      (when (member key ghostel-keymap-exceptions)
+        (setopt ghostel-keymap-exceptions (remove key ghostel-keymap-exceptions))))))
+
 (defcustom herdr-menu-key nil
-  "Global key for `herdr-menu' while `herdr-mode' is on.
-A `key-valid-p' string such as \"C-9\".  Pressing it again inside the
-menu opens the *herdr* buffer.  The key is also added to
-`ghostel-keymap-exceptions' so it reaches Emacs from terminal buffers."
-  :type '(choice (const :tag "None" nil) (string :tag "Key")))
+  "Global key for `herdr-menu', a `key-valid-p' string such as \"C-9\".
+Bound as soon as it is set (independently of `herdr-mode'), and also
+added to `ghostel-keymap-exceptions' so it reaches Emacs from terminal
+buffers.  Pressing it again inside the menu opens the *herdr* buffer."
+  :type '(choice (const :tag "None" nil) (string :tag "Key"))
+  :set (lambda (sym val)
+         (herdr--bind-menu-key (and (boundp sym) (symbol-value sym)) nil)
+         (set-default sym val)
+         (herdr--bind-menu-key val t)))
 
 ;;; Internal state
 
@@ -501,20 +519,6 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
 
 (defvar herdr--mode-line-string '(:eval (herdr--mode-line-segment)))
 
-(defun herdr--bind-menu-key (bind)
-  "Bind `herdr-menu-key' globally and in Ghostel, or unbind when BIND is nil."
-  (when-let* ((key herdr-menu-key))
-    (if bind
-        (progn
-          (keymap-global-set key #'herdr-menu)
-          (unless (member key ghostel-keymap-exceptions)
-            (setopt ghostel-keymap-exceptions
-                    (append ghostel-keymap-exceptions (list key)))))
-      (when (eq (keymap-global-lookup key) #'herdr-menu)
-        (keymap-global-unset key))
-      (when (member key ghostel-keymap-exceptions)
-        (setopt ghostel-keymap-exceptions (remove key ghostel-keymap-exceptions))))))
-
 ;;;###autoload
 (define-minor-mode herdr-mode
   "Global minor mode owning the Herdr poll timer and mode-line segment."
@@ -524,10 +528,8 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
       (progn
         (unless (member herdr--mode-line-string global-mode-string)
           (push herdr--mode-line-string global-mode-string))
-        (herdr--bind-menu-key t)
         (herdr--ensure-timer))
     (herdr--stop-timer)
-    (herdr--bind-menu-key nil)
     (setq herdr--blocked-count 0
           global-mode-string (delete herdr--mode-line-string global-mode-string))
     (force-mode-line-update t)))
