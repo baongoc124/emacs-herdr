@@ -76,13 +76,6 @@ alone."
                  (const :tag "PROJECT - SESSION" project-session)
                  (const :tag "Don't rename" nil)))
 
-(defcustom herdr-fixed-window-width t
-  "Keep the *herdr* window's width fixed (`window-size-fixed').
-Herdr mangles agent output whenever a pane's width changes, so side
-windows and `balance-windows' take their space from other windows
-instead.  Set `window-size-fixed' to nil in the buffer to resize by hand."
-  :type 'boolean)
-
 (defcustom herdr-sync-tab-labels t
   "Rename each agent's tab to the agent's session name (its terminal title)."
   :type 'boolean)
@@ -331,9 +324,7 @@ Follows `herdr-sync-workspace-labels'."
       (ghostel-mode)
       ;; A side-by-side popup halves the PTY width; Herdr's reflow then
       ;; exposes rows that agents drew full-width as duplicated/merged lines.
-      (setq-local split-width-threshold nil)
-      (when herdr-fixed-window-width
-        (setq-local window-size-fixed 'width)))
+      (setq-local split-width-threshold nil))
     (pop-to-buffer buf '((display-buffer-same-window)))
     (ghostel-exec buf herdr-executable nil '((kind . herdr)))
     buf))

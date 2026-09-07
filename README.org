@@ -94,7 +94,6 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
 | =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
 | =herdr-sync-tab-labels=           | =t=        | Rename each agent's tab to its session name                |
-| =herdr-fixed-window-width=        | =t=        | Fix the =*herdr*= window width (see Known issue below)     |
 
 ** Window placement
 
@@ -111,9 +110,7 @@ anything else. A dedicated main window taking 60% of the frame at the right edge
                (body-function . select-window)))
 #+end_src
 
-=dedicated= keeps other =display-buffer= calls from reusing the window. With
-=herdr-fixed-window-width= (default) the window keeps its width when side windows open
-or =balance-windows= runs; other windows absorb the change.
+=dedicated= keeps other =display-buffer= calls from reusing the window.
 | =herdr-workspace-label-function=  | =identity= | Map the project name to the label, e.g. strip a prefix    |
 
 Example:
