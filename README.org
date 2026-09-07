@@ -38,6 +38,8 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 | Command              | What it does                                                           |
 |----------------------+------------------------------------------------------------------------|
 | =herdr=              | Pop to =*herdr*=, launching =herdr= in Ghostel if needed (restarts if dead) |
+| =herdr-hide=         | Hide the =*herdr*= window; the window it took over gets its buffer and size back |
+| =herdr-toggle=       | =herdr=, or =herdr-hide= when =*herdr*= is the current buffer          |
 | =herdr-menu=         | Transient menu (below)                                                 |
 | =herdr-switch-agent= | Pick an agent, sorted blocked → done → working → idle → unknown; focus it |
 | =herdr-new-agent=    | Start an agent for the current =project.el= project: a new tab in the project's existing workspace, or a new workspace |
@@ -48,12 +50,14 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 
 ** The menu
 
-Pressing =herdr-menu-key= opens it; pressing the same key again opens =*herdr*=.
+Pressing =herdr-menu-key= opens it; pressing the same key again opens =*herdr*=, or
+hides it when you are already in it.
 
 | Key     | Action                                   |
 |---------+------------------------------------------|
-| menu key | Open Herdr                              |
+| menu key | Open / hide Herdr                       |
 | =o=     | Open Herdr                               |
+| =q=     | Hide Herdr                               |
 | =s=     | Switch agent                             |
 | =n=     | New agent for project                    |
 | =b=     | Blocked (shows the live count)           |

@@ -31,6 +31,7 @@
 ;; Ghostel terminal buffer and adds the few things Emacs does faster:
 ;;
 ;;   `herdr'               pop to the *herdr* buffer, launching it if needed
+;;   `herdr-hide'          hide that window, restoring what it displaced
 ;;   `herdr-menu'          transient menu; `herdr-menu-key' opens it globally
 ;;   `herdr-switch-agent'  completing-read over agents, sorted by attention
 ;;   `herdr-new-agent'     start an agent for the project (new tab or workspace)
@@ -345,6 +346,22 @@ Follows `herdr-sync-workspace-labels'."
 ;;; Commands
 
 ;;;###autoload
+(defun herdr-hide ()
+  "Hide the *herdr* window, restoring what it displaced."
+  (interactive)
+  (if-let* ((win (get-buffer-window herdr--buffer-name)))
+      (quit-restore-window win 'bury)
+    (user-error "*herdr* is not displayed")))
+
+;;;###autoload
+(defun herdr-toggle ()
+  "Pop to *herdr*, or hide it when its window is already selected."
+  (interactive)
+  (if (eq (current-buffer) (get-buffer herdr--buffer-name))
+      (herdr-hide)
+    (herdr)))
+
+;;;###autoload
 (defun herdr-switch-agent ()
   "Pick an agent and focus it in the Herdr TUI."
   (interactive)
@@ -537,8 +554,9 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
 (defun herdr--menu-children (_)
   "Build menu suffixes; the repeat key (open *herdr*) wins over static keys."
   (let* ((k herdr--menu-repeat-key)
-         (specs `(,@(and k `((,k "Open Herdr" herdr)))
+         (specs `(,@(and k `((,k "Open / hide Herdr" herdr-toggle)))
                   ("o" "Open Herdr" herdr)
+                  ("q" "Hide Herdr" herdr-hide)
                   ("s" "Switch agent" herdr-switch-agent)
                   ("n" "New agent for project" herdr-new-agent)
                   ("b" herdr-goto-blocked
