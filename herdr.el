@@ -94,6 +94,13 @@ per agent and no sidebar.  `herdr-attach-agent' always uses a buffer."
   :type '(choice (const :tag "Herdr TUI" tui)
                  (const :tag "One buffer per agent" buffer)))
 
+(defcustom herdr-attach-takeover t
+  "Pass --takeover to `herdr agent attach'.
+Herdr allows one writable attach client per terminal; with this on,
+attaching from Emacs replaces another client (e.g. a terminal), and
+without it the attach is refused and the buffer closes at once."
+  :type 'boolean)
+
 (defun herdr--bind-menu-key (key bind)
   "Bind KEY to `herdr-menu' globally and in Ghostel, or unbind when BIND is nil."
   (when key
@@ -389,7 +396,8 @@ Follows `herdr-sync-workspace-labels'."
 (defun herdr--create-attach-buffer (agent)
   "Create a buffer directly attached to AGENT's pane and pop to it."
   (let* ((pane (alist-get 'pane-id agent))
-         (args (list "agent" "attach" pane))
+         (args (append (list "agent" "attach" pane)
+                       (and herdr-attach-takeover '("--takeover"))))
          (buf (generate-new-buffer (herdr--attach-buffer-name agent))))
     (with-current-buffer buf
       (ghostel-mode)
@@ -401,11 +409,17 @@ Follows `herdr-sync-workspace-labels'."
                     (command . ,(cons herdr-executable args))))
     buf))
 
-(defun herdr--attach-agent (agent)
-  "Pop to the buffer directly attached to AGENT, creating it if needed."
-  (if-let* ((buf (herdr--find-attach-buffer (alist-get 'pane-id agent))))
-      (pop-to-buffer buf '((display-buffer-same-window)))
-    (herdr--create-attach-buffer agent)))
+(defun herdr--attach-agent (agent &optional reattach)
+  "Pop to the buffer directly attached to AGENT, creating it if needed.
+With REATTACH, drop an existing buffer and attach afresh."
+  (let ((buf (herdr--find-attach-buffer (alist-get 'pane-id agent))))
+    (when (and buf reattach)
+      (let ((kill-buffer-query-functions nil))
+        (kill-buffer buf))
+      (setq buf nil))
+    (if buf
+        (pop-to-buffer buf '((display-buffer-same-window)))
+      (herdr--create-attach-buffer agent))))
 
 (defun herdr--attach-buffers ()
   "Live attach buffers, most recently selected first."
@@ -455,10 +469,11 @@ Follows `herdr-sync-workspace-labels'."
   (herdr--show-agent (herdr--pick-agent "Switch to agent: ")))
 
 ;;;###autoload
-(defun herdr-attach-agent ()
-  "Pick an agent and attach to it directly in its own buffer, no sidebar."
-  (interactive)
-  (herdr--attach-agent (herdr--pick-agent "Attach to agent: ")))
+(defun herdr-attach-agent (&optional reattach)
+  "Pick an agent and attach to it directly in its own buffer, no sidebar.
+With prefix REATTACH, replace an existing buffer with a fresh attach."
+  (interactive "P")
+  (herdr--attach-agent (herdr--pick-agent "Attach to agent: ") reattach))
 
 ;;;###autoload
 (defun herdr-goto-blocked ()
@@ -716,15 +731,19 @@ The attention entry restores the default blocked-first order."
     (herdr--agents-revert)
     (tabulated-list-print t)))
 
-(defun herdr-agents-show ()
-  "Show the agent at point in this window, per `herdr-agent-display'."
-  (interactive)
-  (herdr--show-agent (herdr--agent-at-point)))
+(defun herdr-agents-show (&optional reattach)
+  "Show the agent at point in this window, per `herdr-agent-display'.
+With prefix REATTACH, a buffer-mode agent is attached afresh."
+  (interactive "P")
+  (if (and reattach (eq herdr-agent-display 'buffer))
+      (herdr--attach-agent (herdr--agent-at-point) t)
+    (herdr--show-agent (herdr--agent-at-point))))
 
-(defun herdr-agents-attach ()
-  "Attach to the agent at point in its own buffer, in this window."
-  (interactive)
-  (herdr--attach-agent (herdr--agent-at-point)))
+(defun herdr-agents-attach (&optional reattach)
+  "Attach to the agent at point in its own buffer, in this window.
+With prefix REATTACH, replace an existing buffer with a fresh attach."
+  (interactive "P")
+  (herdr--attach-agent (herdr--agent-at-point) reattach))
 
 ;;;###autoload
 (defun herdr-agents ()

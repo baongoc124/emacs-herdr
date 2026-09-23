@@ -103,6 +103,7 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-default-agent-kind=        | ="claude"= | Default for =herdr-new-agent= (any =--kind= Herdr accepts)  |
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
 | =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
+| =herdr-attach-takeover=           | =t=        | Attach with =--takeover=, replacing another attach client   |
 | =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
 | =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
 | =herdr-sync-tab-labels=           | =t=        | Rename each agent's tab to its session name                |
@@ -147,6 +148,13 @@ Ghostel buffer named =*herdr: <session>*=, one buffer per agent, keyed by pane i
 picking the same agent again reuses its buffer. Detach with =ctrl+b q= (a literal
 =ctrl+b= is =ctrl+b ctrl+b=); killing the buffer detaches too. The agent keeps running in
 the Herdr server either way, and the full TUI still works alongside.
+
+Herdr allows one writable direct-attach client per terminal. With
+=herdr-attach-takeover= (default =t=) an attach from Emacs passes =--takeover= and
+replaces another client, such as =herdr agent attach= in a terminal; with it off the
+attach is refused and the buffer closes immediately. =C-u= before =herdr-attach-agent=,
+or before =RET= / =a= in the agent list, drops an existing buffer and attaches afresh,
+which also takes the pane back after another client took it over.
 
 To make this the default everywhere:
 
