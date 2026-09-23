@@ -86,6 +86,14 @@ alone."
 For example (lambda (name) (string-remove-prefix \"ktzn-\" name))."
   :type 'function)
 
+(defcustom herdr-agent-display 'tui
+  "Where `herdr-switch-agent', `herdr-goto-blocked' and `herdr-new-agent'
+show an agent.  `tui' focuses it inside the *herdr* TUI; `buffer' attaches
+it directly in its own Ghostel buffer via `herdr agent attach', one buffer
+per agent and no sidebar.  `herdr-attach-agent' always uses a buffer."
+  :type '(choice (const :tag "Herdr TUI" tui)
+                 (const :tag "One buffer per agent" buffer)))
+
 (defun herdr--bind-menu-key (key bind)
   "Bind KEY to `herdr-menu' globally and in Ghostel, or unbind when BIND is nil."
   (when key
@@ -100,11 +108,19 @@ For example (lambda (name) (string-remove-prefix \"ktzn-\" name))."
       (when (member key ghostel-keymap-exceptions)
         (setopt ghostel-keymap-exceptions (remove key ghostel-keymap-exceptions))))))
 
+(defcustom herdr-menu-repeat-command #'herdr-toggle
+  "Command run by pressing `herdr-menu-key' again inside the menu.
+`herdr-toggle' opens or hides the *herdr* TUI; `herdr-agents' opens the
+agent list buffer."
+  :type '(choice (const :tag "Open / hide Herdr TUI" herdr-toggle)
+                 (const :tag "Open agent list" herdr-agents)
+                 function))
+
 (defcustom herdr-menu-key nil
   "Global key for `herdr-menu', a `key-valid-p' string such as \"C-9\".
 Bound as soon as it is set (independently of `herdr-mode'), and also
 added to `ghostel-keymap-exceptions' so it reaches Emacs from terminal
-buffers.  Pressing it again inside the menu opens the *herdr* buffer."
+buffers.  Pressing it again inside the menu runs `herdr-menu-repeat-command'."
   :type '(choice (const :tag "None" nil) (string :tag "Key"))
   :set (lambda (sym val)
          (herdr--bind-menu-key (and (boundp sym) (symbol-value sym)) nil)
@@ -119,6 +135,13 @@ buffers.  Pressing it again inside the menu opens the *herdr* buffer."
 (defvar herdr--poll-error-notified nil)
 
 (defconst herdr--buffer-name "*herdr*")
+(defconst herdr--agents-buffer-name "*herdr-agents*")
+
+(defvar-local herdr--agents nil
+  "Agents currently shown in the status buffer, sorted.")
+
+(defvar-local herdr--attached-pane nil
+  "Pane id this buffer is directly attached to, or nil.")
 
 (defconst herdr--status-priority
   '(("blocked" . 0) ("done" . 1) ("working" . 2) ("idle" . 3) ("unknown" . 4)))
@@ -343,6 +366,70 @@ Follows `herdr-sync-workspace-labels'."
       (herdr--create-buffer))
     (herdr--ensure-timer)))
 
+;;; Direct attach (one buffer per agent)
+
+(defun herdr--attach-buffer-name (agent)
+  "Buffer name for a direct attach to AGENT: \"*herdr: session*\"."
+  (let ((session (alist-get 'session agent)))
+    (format "*herdr: %s*"
+            (or (and session (not (string-empty-p session)) session)
+                (alist-get 'name agent)
+                (alist-get 'pane-id agent)))))
+
+(defun herdr--find-attach-buffer (pane-id)
+  "Live buffer directly attached to PANE-ID, or nil.  Dead ones are killed."
+  (seq-find (lambda (buf)
+              (when (equal (buffer-local-value 'herdr--attached-pane buf) pane-id)
+                (if (process-live-p (buffer-local-value 'ghostel--process buf))
+                    t
+                  (kill-buffer buf)
+                  nil)))
+            (buffer-list)))
+
+(defun herdr--create-attach-buffer (agent)
+  "Create a buffer directly attached to AGENT's pane and pop to it."
+  (let* ((pane (alist-get 'pane-id agent))
+         (args (list "agent" "attach" pane))
+         (buf (generate-new-buffer (herdr--attach-buffer-name agent))))
+    (with-current-buffer buf
+      (ghostel-mode)
+      (setq-local herdr--attached-pane pane
+                  split-width-threshold nil))
+    (pop-to-buffer buf '((display-buffer-same-window)))
+    (ghostel-exec buf herdr-executable args
+                  `((kind . herdr-attach)
+                    (command . ,(cons herdr-executable args))))
+    buf))
+
+(defun herdr--attach-agent (agent)
+  "Pop to the buffer directly attached to AGENT, creating it if needed."
+  (if-let* ((buf (herdr--find-attach-buffer (alist-get 'pane-id agent))))
+      (pop-to-buffer buf '((display-buffer-same-window)))
+    (herdr--create-attach-buffer agent)))
+
+(defun herdr--attach-buffers ()
+  "Live attach buffers, most recently selected first."
+  (seq-filter (lambda (buf)
+                (and (buffer-local-value 'herdr--attached-pane buf)
+                     (process-live-p (buffer-local-value 'ghostel--process buf))))
+              (buffer-list)))
+
+;;;###autoload
+(defun herdr-last-agent ()
+  "Pop to the most recently used agent buffer other than the current one."
+  (interactive)
+  (let ((buf (or (seq-find (lambda (b) (not (eq b (current-buffer))))
+                           (herdr--attach-buffers))
+                 (user-error "No other agent buffer"))))
+    (pop-to-buffer buf)))
+
+(defun herdr--show-agent (agent)
+  "Show AGENT as configured by `herdr-agent-display'."
+  (pcase herdr-agent-display
+    ('buffer (herdr--attach-agent agent))
+    (_ (herdr--call-json-sync "agent" "focus" (alist-get 'target agent))
+       (herdr))))
+
 ;;; Commands
 
 ;;;###autoload
@@ -363,22 +450,25 @@ Follows `herdr-sync-workspace-labels'."
 
 ;;;###autoload
 (defun herdr-switch-agent ()
-  "Pick an agent and focus it in the Herdr TUI."
+  "Pick an agent and show it, as configured by `herdr-agent-display'."
   (interactive)
-  (let ((agent (herdr--pick-agent "Switch to agent: ")))
-    (herdr--call-json-sync "agent" "focus" (alist-get 'target agent))
-    (herdr)))
+  (herdr--show-agent (herdr--pick-agent "Switch to agent: ")))
+
+;;;###autoload
+(defun herdr-attach-agent ()
+  "Pick an agent and attach to it directly in its own buffer, no sidebar."
+  (interactive)
+  (herdr--attach-agent (herdr--pick-agent "Attach to agent: ")))
 
 ;;;###autoload
 (defun herdr-goto-blocked ()
-  "Focus the first blocked agent and pop to *herdr*."
+  "Show the first blocked agent, as configured by `herdr-agent-display'."
   (interactive)
   (let ((blocked (seq-find (lambda (a) (equal (alist-get 'status a) "blocked"))
                            (herdr--sort-agents (herdr--fetch-agents-sync)))))
     (unless blocked
       (user-error "No blocked agents"))
-    (herdr--call-json-sync "agent" "focus" (alist-get 'target blocked))
-    (herdr)))
+    (herdr--show-agent blocked)))
 
 (defun herdr--sanitize-name (str)
   "Sanitize STR to a valid herdr agent name."
@@ -427,9 +517,14 @@ workspace when there is none."
     (herdr--call-async
      (lambda (result)
        (message "herdr: %s %s in %s"
-                (if result "started" "FAILED to start") name pane))
+                (if result "started" "FAILED to start") name pane)
+       ;; `agent attach' needs a live agent in the pane, so attach only
+       ;; once the start has succeeded.
+       (when (and result (eq herdr-agent-display 'buffer))
+         (herdr--attach-agent `((pane-id . ,pane) (name . ,name)))))
      "agent" "start" name "--kind" kind "--pane" pane)
-    (herdr)))
+    (unless (eq herdr-agent-display 'buffer)
+      (herdr))))
 
 ;;; Send region
 
@@ -508,7 +603,8 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
          (let ((agents (herdr--extract-agents json)))
            (setq herdr--blocked-count
                  (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
-           (herdr--sync-labels agents)))
+           (herdr--sync-labels agents)
+           (herdr--agents-render agents)))
        (force-mode-line-update t))
      "api" "snapshot")))
 
@@ -524,6 +620,124 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
   (when herdr--poll-timer
     (cancel-timer herdr--poll-timer)
     (setq herdr--poll-timer nil)))
+
+;;; Status buffer
+
+(defvar-keymap herdr-agents-mode-map
+  :parent tabulated-list-mode-map
+  "RET" #'herdr-agents-show
+  "a" #'herdr-agents-attach
+  "n" #'next-line
+  "p" #'previous-line
+  "s" #'herdr-agents-sort
+  "c" #'herdr-new-agent
+  "o" #'herdr)
+
+(define-derived-mode herdr-agents-mode tabulated-list-mode "Herdr-Agents"
+  "Live list of Herdr agents, refreshed by the `herdr-mode' poll.
+RET shows the agent (see `herdr-agent-display'), `a' attaches it in a buffer,
+`s' asks which column to sort by."
+  (setq tabulated-list-format [("Status" 8 t)
+                               ("Session" 60 t)
+                               ("Kind" 7 t)
+                               ("Project" 18 t)
+                               ("Pane" 6 t)]
+        tabulated-list-padding 1
+        tabulated-list-sort-key nil)
+  (add-hook 'tabulated-list-revert-hook #'herdr--agents-revert nil t)
+  (tabulated-list-init-header))
+
+(defun herdr--status-face (status)
+  "Face for an agent STATUS string."
+  (pcase status
+    ("blocked" 'warning)
+    ("done" 'success)
+    ("working" 'default)
+    (_ 'shadow)))
+
+(defun herdr--agent-entry (agent)
+  "Tabulated-list entry for AGENT, keyed by pane id."
+  (let* ((status (alist-get 'status agent))
+         (session (alist-get 'session agent))
+         (cwd (alist-get 'cwd agent))
+         (pane (alist-get 'pane-id agent)))
+    (list pane
+          (vector (propertize status 'face (herdr--status-face status))
+                  (or (and session (not (string-empty-p session)) session)
+                      (alist-get 'name agent)
+                      pane)
+                  (or (alist-get 'kind agent) "")
+                  (if cwd (herdr--project-name cwd) "")
+                  pane))))
+
+(defun herdr--agents-set-entries (agents)
+  "Store AGENTS sorted and rebuild `tabulated-list-entries' from them."
+  (setq herdr--agents (herdr--sort-agents agents)
+        tabulated-list-entries (mapcar #'herdr--agent-entry herdr--agents)))
+
+(defun herdr--agents-render (agents)
+  "Redraw the status buffer with AGENTS when it exists, keeping point."
+  (when-let* ((buf (get-buffer herdr--agents-buffer-name)))
+    (with-current-buffer buf
+      (when (derived-mode-p 'herdr-agents-mode)
+        (herdr--agents-set-entries agents)
+        (tabulated-list-print t)))))
+
+(defun herdr--agents-revert ()
+  "Refill the status buffer from a fresh snapshot (for `revert-buffer')."
+  (herdr--agents-set-entries (herdr--fetch-agents-sync)))
+
+(defun herdr--agent-at-point ()
+  "Agent alist for the status-buffer row at point."
+  (let ((pane (tabulated-list-get-id)))
+    (or (and pane (seq-find (lambda (a) (equal (alist-get 'pane-id a) pane))
+                            herdr--agents))
+        (user-error "No agent on this line"))))
+
+(defconst herdr--attention-sort-label "attention (default)"
+  "Sort choice that restores the blocked-first order.")
+
+(defun herdr-agents-sort ()
+  "Pick a column to sort by; picking the current one reverses the order.
+The attention entry restores the default blocked-first order."
+  (interactive)
+  (let* ((columns (mapcar #'car tabulated-list-format))
+         (choice (completing-read "Sort by: "
+                                  (cons herdr--attention-sort-label columns)
+                                  nil t))
+         (current tabulated-list-sort-key))
+    (setq tabulated-list-sort-key
+          (cond ((equal choice herdr--attention-sort-label) nil)
+                ((equal choice (car current)) (cons choice (not (cdr current))))
+                (t (cons choice nil))))
+    (tabulated-list-init-header)
+    ;; `tabulated-list-print' sorts the entries list destructively, so
+    ;; rebuild it before printing in the new order.
+    (herdr--agents-revert)
+    (tabulated-list-print t)))
+
+(defun herdr-agents-show ()
+  "Show the agent at point in this window, per `herdr-agent-display'."
+  (interactive)
+  (herdr--show-agent (herdr--agent-at-point)))
+
+(defun herdr-agents-attach ()
+  "Attach to the agent at point in its own buffer, in this window."
+  (interactive)
+  (herdr--attach-agent (herdr--agent-at-point)))
+
+;;;###autoload
+(defun herdr-agents ()
+  "Pop to the live agent list; it refreshes with the `herdr-mode' poll."
+  (interactive)
+  (let ((buf (get-buffer-create herdr--agents-buffer-name)))
+    (with-current-buffer buf
+      (unless (derived-mode-p 'herdr-agents-mode)
+        (herdr-agents-mode))
+      (herdr--agents-revert)
+      (tabulated-list-print t))
+    (pop-to-buffer buf)
+    (herdr--ensure-timer)))
 
 ;;; Transient menu
 
@@ -551,19 +765,32 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
                                       'face 'warning))
     "Herdr"))
 
+(defun herdr--repeat-description ()
+  "Menu label for `herdr-menu-repeat-command'."
+  (pcase herdr-menu-repeat-command
+    ('herdr-toggle "Open / hide Herdr")
+    ('herdr-agents "Open agent list")
+    (cmd (format "%s" cmd))))
+
 (defun herdr--menu-children (_)
-  "Build menu suffixes; the repeat key (open *herdr*) wins over static keys."
+  "Build menu suffixes; the repeat key wins over static keys."
   (let* ((k herdr--menu-repeat-key)
-         (specs `(,@(and k `((,k "Open / hide Herdr" herdr-toggle)))
+         (specs `(,@(and k `((,k ,(herdr--repeat-description)
+                              ,herdr-menu-repeat-command)))
                   ("o" "Open Herdr" herdr)
                   ("q" "Hide Herdr" herdr-hide)
                   ("s" "Switch agent" herdr-switch-agent)
+                  ("a" "Attach agent in buffer" herdr-attach-agent)
+                  ("SPC" "Last agent buffer" herdr-last-agent)
                   ("n" "New agent for project" herdr-new-agent)
                   ("b" herdr-goto-blocked
                    :description ,(lambda () (format "Blocked (%d)" herdr--blocked-count)))
                   ("r" "Send region (stage)" herdr-send-region :if use-region-p)
                   ("R" "Send region & submit" herdr-submit-region :if use-region-p)
-                  ("m" "Toggle poll & mode-line" herdr-mode)))
+                  ("m" herdr-mode
+                   :description ,(lambda ()
+                                   (format "Poll & mode-line (%s)"
+                                           (if herdr-mode "on" "off"))))))
          (seen nil)
          (unique (seq-filter (lambda (s)
                                (unless (member (car s) seen)
@@ -573,7 +800,8 @@ arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
 
 ;;;###autoload (autoload 'herdr-menu "herdr" nil t)
 (transient-define-prefix herdr-menu ()
-  "Herdr commands.  Pressing `herdr-menu-key' again opens *herdr*."
+  "Herdr commands.  Pressing `herdr-menu-key' again runs
+`herdr-menu-repeat-command'."
   [:description herdr--menu-description
    :setup-children herdr--menu-children]
   (interactive)

@@ -41,7 +41,10 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 | =herdr-hide=         | Hide the =*herdr*= window; the window it took over gets its buffer and size back |
 | =herdr-toggle=       | =herdr=, or =herdr-hide= when =*herdr*= is the current buffer          |
 | =herdr-menu=         | Transient menu (below)                                                 |
-| =herdr-switch-agent= | Pick an agent, sorted blocked → done → working → idle → unknown; focus it |
+| =herdr-switch-agent= | Pick an agent, sorted blocked → done → working → idle → unknown; show it (see =herdr-agent-display=) |
+| =herdr-attach-agent= | Pick an agent and attach to it in its own buffer, without the sidebar (below) |
+| =herdr-last-agent=   | Pop to the most recently used agent buffer other than the current one |
+| =herdr-agents=       | Live agent list buffer, refreshed by the poll; =RET= shows, =a= attaches, =c= new, =o= TUI |
 | =herdr-new-agent=    | Start an agent for the current =project.el= project: a new tab in the project's existing workspace, or a new workspace |
 | =herdr-goto-blocked= | Focus the first blocked agent                                          |
 | =herdr-send-region=  | Type the region into an agent's prompt (=C-u=: submit it)              |
@@ -50,20 +53,23 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 
 ** The menu
 
-Pressing =herdr-menu-key= opens it; pressing the same key again opens =*herdr*=, or
-hides it when you are already in it.
+Pressing =herdr-menu-key= opens it; pressing the same key again runs
+=herdr-menu-repeat-command=: by default =herdr-toggle=, which opens =*herdr*= or hides it
+when you are already in it. Set it to =herdr-agents= to open the agent list instead.
 
 | Key     | Action                                   |
 |---------+------------------------------------------|
-| menu key | Open / hide Herdr                       |
+| menu key | Open / hide Herdr (or open the agent list, see =herdr-menu-repeat-command=) |
+| =SPC=   | Last agent buffer (most recently used, other than the current) |
 | =o=     | Open Herdr                               |
 | =q=     | Hide Herdr                               |
 | =s=     | Switch agent                             |
+| =a=     | Attach agent in buffer                   |
 | =n=     | New agent for project                    |
 | =b=     | Blocked (shows the live count)           |
 | =r=     | Send region (stage) — with an active region |
 | =R=     | Send region & submit — with an active region |
-| =m=     | Toggle =herdr-mode=                      |
+| =m=     | Toggle =herdr-mode= (poll & mode-line; shows on/off) |
 
 ** Agent picker
 
@@ -96,6 +102,8 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-poll-interval=             | =2=        | Seconds between =herdr api snapshot= polls                 |
 | =herdr-default-agent-kind=        | ="claude"= | Default for =herdr-new-agent= (any =--kind= Herdr accepts)  |
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
+| =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
+| =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
 | =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
 | =herdr-sync-tab-labels=           | =t=        | Rename each agent's tab to its session name                |
 
@@ -130,6 +138,48 @@ workspace carries the project name and each agent's tab carries its session name
 
 Polling stops by itself when the Herdr server is unreachable (one message, no spam)
 and resumes the next time you run =herdr=.
+
+* One buffer per agent, no sidebar
+
+Herdr's direct attach (=herdr agent attach=, Linux and macOS) streams a single
+server-owned pane instead of the whole workspace UI. =herdr-attach-agent= runs it in a
+Ghostel buffer named =*herdr: <session>*=, one buffer per agent, keyed by pane id, so
+picking the same agent again reuses its buffer. Detach with =ctrl+b q= (a literal
+=ctrl+b= is =ctrl+b ctrl+b=); killing the buffer detaches too. The agent keeps running in
+the Herdr server either way, and the full TUI still works alongside.
+
+To make this the default everywhere:
+
+#+begin_src emacs-lisp
+(setopt herdr-agent-display 'buffer)
+#+end_src
+
+Then =herdr-switch-agent= and =herdr-goto-blocked= open the agent's buffer instead of
+focusing it in =*herdr*=, and =herdr-new-agent= attaches once the agent has started
+(=herdr agent attach= needs a live agent in the pane, so this happens a few seconds after
+the command, in the window selected at that moment).
+
+** Agent list
+
+=herdr-agents= opens =*herdr-agents*=, a =tabulated-list-mode= buffer with one row per
+agent (status, session, kind, project, pane), sorted like the picker and redrawn on every
+poll while it exists, keeping point on the same agent. =RET= shows the agent at point in
+the list's own window per =herdr-agent-display=, =a= always attaches in a buffer, =n= / =p=
+move, =s= asks which column to sort by (the same column again reverses; =attention=
+restores the default order), =c= starts a new agent for the current project, =o= opens the TUI, =g=
+refreshes, =q= quits. To open the list in a left-hand side window (not dedicated, so
+=RET= can replace it with the agent):
+
+#+begin_src emacs-lisp
+(add-to-list 'display-buffer-alist
+             '("\\`\\*herdr-agents\\*"
+               (display-buffer-reuse-window display-buffer-in-side-window)
+               (side . left)
+               (window-width . 50)))
+#+end_src
+
+Direct attach owns the pane's size: the pane follows the Emacs window, so the TUI's view
+of the same pane reflows when you resize the buffer's window. See the width caveat below.
 
 * Suggested Herdr configuration
 
