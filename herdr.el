@@ -68,7 +68,7 @@
   "Default agent kind for `herdr-new-agent'."
   :type 'string)
 
-(defcustom herdr-sync-workspace-labels 'project
+(defcustom herdr-sync-workspace-labels nil
   "How to rename the workspace of each agent.
 `project' uses the project.el name of the agent's cwd; `project-session'
 appends the agent's session name (its terminal title); nil leaves labels
@@ -77,7 +77,7 @@ alone."
                  (const :tag "PROJECT - SESSION" project-session)
                  (const :tag "Don't rename" nil)))
 
-(defcustom herdr-sync-tab-labels t
+(defcustom herdr-sync-tab-labels nil
   "Rename each agent's tab to the agent's session name (its terminal title)."
   :type 'boolean)
 
