@@ -105,8 +105,8 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
 | =herdr-attach-takeover=           | =t=        | Attach with =--takeover=, replacing another attach client   |
 | =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
-| =herdr-sync-workspace-labels=     | ='project= | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
-| =herdr-sync-tab-labels=           | =t=        | Rename each agent's tab to its session name                |
+| =herdr-sync-workspace-labels=     | =nil=      | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
+| =herdr-sync-tab-labels=           | =nil=      | Rename each agent's tab to its session name                |
 
 ** Window placement
 
