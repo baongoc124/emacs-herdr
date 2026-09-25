@@ -22,7 +22,17 @@ Everything goes through the =herdr= CLI. The raw socket API is never used.
 (use-package herdr
   :vc (:url "https://github.com/baongoc124/emacs-herdr")
   :hook (after-init . herdr-mode)
-  :custom ((herdr-menu-key "C-9")))
+  :custom ((herdr-menu-key "C-9")
+           ;; These rewrite names that already exist on the Herdr server.
+           ;; Each workspace becomes the project.el name of its first
+           ;; agent's directory; Herdr records only that new name.
+           ;; Each tab becomes the agent's terminal title when the title
+           ;; is a session name rather than a generic default (empty,
+           ;; "claude code", or the agent kind). A title that changes,
+           ;; including a live status prefix, renames the tab again on
+           ;; the next poll.
+           (herdr-sync-workspace-labels 'project)
+           (herdr-sync-tab-labels t)))
 #+end_src
 
 Or from a checkout with =:load-path "~/builds/emacs-herdr"=.
