@@ -118,6 +118,8 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
 | =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
 | =herdr-attach-takeover=           | =t=        | Attach with =--takeover=, replacing another attach client   |
+| =herdr-attach-header-line=        | =t=        | Clickable strip of all agents in attach buffers' header line |
+| =herdr-header-label-width=        | =16=       | Max characters per agent label in that strip                 |
 | =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
 | =herdr-sync-workspace-labels=     | =nil=      | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
 | =herdr-sync-tab-labels=           | =nil=      | Rename each agent's tab to its session name                |
@@ -181,6 +183,15 @@ Then =herdr-switch-agent= and =herdr-goto-blocked= open the agent's buffer inste
 focusing it in =*herdr*=, and =herdr-new-agent= attaches once the agent has started
 (=herdr agent attach= needs a live agent in the pane, so this happens a few seconds after
 the command, in the window selected at that moment).
+
+** Header line
+
+Attach buffers carry a header line listing every agent, sorted by attention, as
+=glyph session= segments (=●= blocked, =✓= done, =◐= working, =·= idle); the current agent is
+highlighted. Click a segment to switch to that agent in the same window. Agents that
+do not fit the window width are counted in a trailing =+N= marker; the attention sort
+keeps the ones needing you visible. It refreshes with the poll; =herdr-attach-header-line= turns it off, =herdr-header-label-width= trims
+long session names.
 
 ** Agent list
 

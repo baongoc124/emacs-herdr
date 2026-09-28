@@ -94,6 +94,15 @@ per agent and no sidebar.  `herdr-attach-agent' always uses a buffer."
   :type '(choice (const :tag "Herdr TUI" tui)
                  (const :tag "One buffer per agent" buffer)))
 
+(defcustom herdr-attach-header-line t
+  "Show a clickable strip of all agents in the header line of attach buffers.
+Agents are sorted by attention (blocked first); clicking one switches to it."
+  :type 'boolean)
+
+(defcustom herdr-header-label-width 16
+  "Maximum characters per agent label in the attach buffer header line."
+  :type 'natnum)
+
 (defcustom herdr-attach-takeover t
   "Pass --takeover to `herdr agent attach'.
 Herdr allows one writable attach client per terminal; with this on,
@@ -149,6 +158,12 @@ buffers.  Pressing it again inside the menu runs `herdr-menu-repeat-command'."
 
 (defvar-local herdr--attached-pane nil
   "Pane id this buffer is directly attached to, or nil.")
+
+(defvar herdr--agents-cache nil
+  "Agents from the last poll, sorted by attention.")
+
+(defconst herdr--status-glyphs
+  '(("blocked" . "●") ("done" . "✓") ("working" . "◐") ("idle" . "·") ("unknown" . "?")))
 
 (defconst herdr--status-priority
   '(("blocked" . 0) ("done" . 1) ("working" . 2) ("idle" . 3) ("unknown" . 4)))
@@ -373,6 +388,63 @@ Follows `herdr-sync-workspace-labels'."
       (herdr--create-buffer))
     (herdr--ensure-timer)))
 
+;;; Attach buffer header line
+
+(defun herdr--header-label (agent)
+  "Short label for AGENT: status glyph and a truncated session name."
+  (let* ((status (alist-get 'status agent))
+         (session (alist-get 'session agent))
+         (who (or (and session (not (string-empty-p session)) session)
+                  (alist-get 'name agent)
+                  (alist-get 'pane-id agent))))
+    (format " %s %s "
+            (or (cdr (assoc status herdr--status-glyphs)) "?")
+            (truncate-string-to-width who herdr-header-label-width nil nil "…"))))
+
+(defun herdr--header-click-command (agent)
+  "Command switching to AGENT in the clicked window."
+  (lambda (event)
+    (interactive "e")
+    (select-window (posn-window (event-start event)))
+    (herdr--attach-agent agent)))
+
+(defun herdr--header-segment (agent current-pane)
+  "Clickable header-line segment for AGENT; CURRENT-PANE is highlighted."
+  (let ((map (make-sparse-keymap))
+        (status (alist-get 'status agent))
+        (current (equal (alist-get 'pane-id agent) current-pane)))
+    (define-key map [header-line mouse-1] (herdr--header-click-command agent))
+    (propertize (herdr--header-label agent)
+                'face (if current
+                          `(:inherit ,(herdr--status-face status) :inverse-video t)
+                        (herdr--status-face status))
+                ;; A fresh list per segment: adjacent text sharing an `eq'
+                ;; mouse-face highlights as one block.
+                'mouse-face (list 'highlight)
+                'help-echo (format "%s · %s · %s" status
+                                   (or (alist-get 'cwd agent) "")
+                                   (alist-get 'pane-id agent))
+                'pointer 'hand
+                'local-map map)))
+
+(defun herdr--header-line ()
+  "Header-line string: as many agents as fit the window, then a \"+N\" marker."
+  (let ((width (window-width)) (row "") (dropped 0))
+    (dolist (agent herdr--agents-cache)
+      (let ((seg (herdr--header-segment agent herdr--attached-pane)))
+        (cond
+         ((string-empty-p row) (setq row seg))
+         ;; Keep 4 columns free for the overflow marker.
+         ((<= (+ (string-width row) 1 (string-width seg) 4) width)
+          (setq row (concat row " " seg)))
+         (t (setq dropped (1+ dropped))))))
+    (if (> dropped 0)
+        (concat row (propertize (format " +%d" dropped) 'face 'shadow))
+      row)))
+
+(defvar herdr--header-line-format '(:eval (herdr--header-line))
+  "Value installed as `header-line-format' in attach buffers.")
+
 ;;; Direct attach (one buffer per agent)
 
 (defun herdr--attach-buffer-name (agent)
@@ -402,7 +474,9 @@ Follows `herdr-sync-workspace-labels'."
     (with-current-buffer buf
       (ghostel-mode)
       (setq-local herdr--attached-pane pane
-                  split-width-threshold nil))
+                  split-width-threshold nil)
+      (when herdr-attach-header-line
+        (setq header-line-format herdr--header-line-format)))
     (pop-to-buffer buf '((display-buffer-same-window)))
     (ghostel-exec buf herdr-executable args
                   `((kind . herdr-attach)
@@ -638,6 +712,7 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
          (let ((agents (herdr--extract-agents json)))
            (setq herdr--blocked-count
                  (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
+           (setq herdr--agents-cache (herdr--sort-agents agents))
            (herdr--sync-labels agents)
            (herdr--sync-attach-buffer-names agents)
            (herdr--agents-render agents)))
