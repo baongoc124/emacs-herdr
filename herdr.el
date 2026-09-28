@@ -421,9 +421,7 @@ Follows `herdr-sync-workspace-labels'."
                 ;; A fresh list per segment: adjacent text sharing an `eq'
                 ;; mouse-face highlights as one block.
                 'mouse-face (list 'highlight)
-                'help-echo (format "%s · %s · %s" status
-                                   (or (alist-get 'cwd agent) "")
-                                   (alist-get 'pane-id agent))
+                'help-echo (herdr--format-candidate agent)
                 'pointer 'hand
                 'local-map map)))
 
