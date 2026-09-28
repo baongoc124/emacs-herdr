@@ -183,7 +183,7 @@ the command, in the window selected at that moment).
 
 ** Agent list
 
-=herdr-agents= opens =*herdr-agents*=, a =tabulated-list-mode= buffer with one row per
+=herdr-agents= opens =*herdr-agents*= in the current window, a =tabulated-list-mode= buffer with one row per
 agent (status, session, kind, project, pane), sorted like the picker and redrawn on every
 poll while it exists, keeping point on the same agent. =RET= shows the agent at point in
 the list's own window per =herdr-agent-display=, =a= always attaches in a buffer, =n= / =p=

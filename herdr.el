@@ -765,7 +765,7 @@ With prefix REATTACH, replace an existing buffer with a fresh attach."
         (herdr-agents-mode))
       (herdr--agents-revert)
       (tabulated-list-print t))
-    (pop-to-buffer buf)
+    (pop-to-buffer buf '((display-buffer-same-window)))
     (herdr--ensure-timer)))
 
 ;;; Transient menu
