@@ -159,7 +159,8 @@ and resumes the next time you run =herdr=.
 Herdr's direct attach (=herdr agent attach=, Linux and macOS) streams a single
 server-owned pane instead of the whole workspace UI. =herdr-attach-agent= runs it in a
 Ghostel buffer named =*herdr: <session>*=, one buffer per agent, keyed by pane id, so
-picking the same agent again reuses its buffer. Detach with =ctrl+b q= (a literal
+picking the same agent again reuses its buffer. The name follows the session name: when
+you rename the session (e.g. =/rename= in Claude Code), the poll renames the buffer. Detach with =ctrl+b q= (a literal
 =ctrl+b= is =ctrl+b ctrl+b=); killing the buffer detaches too. The agent keeps running in
 the Herdr server either way, and the full TUI still works alongside.
 

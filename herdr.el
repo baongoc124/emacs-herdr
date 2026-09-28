@@ -409,6 +409,16 @@ Follows `herdr-sync-workspace-labels'."
                     (command . ,(cons herdr-executable args))))
     buf))
 
+(defun herdr--sync-attach-buffer-names (agents)
+  "Rename live attach buffers whose AGENTS session name changed."
+  (dolist (agent agents)
+    (when-let* ((pane (alist-get 'pane-id agent))
+                (buf (herdr--find-attach-buffer pane))
+                (name (herdr--attach-buffer-name agent)))
+      (unless (equal (buffer-name buf) name)
+        (with-current-buffer buf
+          (rename-buffer name t))))))
+
 (defun herdr--attach-agent (agent &optional reattach)
   "Pop to the buffer directly attached to AGENT, creating it if needed.
 With REATTACH, drop an existing buffer and attach afresh."
@@ -629,6 +639,7 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
            (setq herdr--blocked-count
                  (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
            (herdr--sync-labels agents)
+           (herdr--sync-attach-buffer-names agents)
            (herdr--agents-render agents)))
        (force-mode-line-update t))
      "api" "snapshot")))
