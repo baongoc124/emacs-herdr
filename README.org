@@ -5,7 +5,8 @@ Emacs integration for [[https://herdr.dev][Herdr]], a tmux-like terminal multipl
 Herdr's full TUI, mouse UI included, runs in one [[https://github.com/dakra/ghostel][Ghostel]] buffer. Emacs adds the
 few things the mouse is slow at: a transient menu, an attention-sorted agent picker,
 one-key "start an agent for this project", a blocked-agent indicator in the mode-line,
-and sending the region to an agent as a fenced code block with file/line/branch context.
+and sending the active region or the current line to an agent as a fenced code
+block with file/line/branch context.
 
 Everything goes through the =herdr= CLI. The raw socket API is never used.
 
@@ -47,8 +48,8 @@ terminal; press =M-RET= first. =herdr-mode= owns the poll timer and the mode-lin
 | =herdr-agents=       | Live agent list buffer, refreshed by the poll; =RET= shows, =a= attaches, =c= new, =o= TUI |
 | =herdr-new-agent=    | Start an agent for the current =project.el= project: a new tab in the project's existing workspace, or a new workspace |
 | =herdr-goto-blocked= | Focus the first blocked agent                                          |
-| =herdr-send-region=  | Type the region into an agent's prompt (=C-u=: submit it)              |
-| =herdr-submit-region= | Same as =C-u herdr-send-region=                                       |
+| =herdr-send-region=   | Type the region, or the current line, into an agent's prompt (=C-u=: submit it) |
+| =herdr-submit-region= | Same as =C-u herdr-send-region=                                                  |
 | =herdr-mode=         | Global minor mode: timer, mode-line =● N=, menu key                    |
 
 ** The menu
@@ -67,8 +68,8 @@ when you are already in it. Set it to =herdr-agents= to open the agent list inst
 | =a=     | Attach agent in buffer                   |
 | =n=     | New agent for project                    |
 | =b=     | Blocked (shows the live count)           |
-| =r=     | Send region (stage) — with an active region |
-| =R=     | Send region & submit — with an active region |
+| =r=     | Send region (stage) — region, or the line at point |
+| =R=     | Send region & submit — region, or the line at point |
 | =m=     | Toggle =herdr-mode= (poll & mode-line; shows on/off) |
 
 ** Agent picker
@@ -78,6 +79,9 @@ status, the agent's session name (its terminal title, e.g. what =/rename= sets i
 Claude Code), the agent kind, its working directory and pane id.
 
 ** Sending a region
+
+An active region is sent as-is. With no active region, the whole line at
+point is sent, and the fence's line range is that single line.
 
 The payload is a fenced block with language (from =major-mode=), project-relative path,
 line range, project root and git branch:

@@ -36,7 +36,7 @@
 ;;   `herdr-switch-agent'  completing-read over agents, sorted by attention
 ;;   `herdr-new-agent'     start an agent for the project (new tab or workspace)
 ;;   `herdr-goto-blocked'  focus the first agent waiting for input
-;;   `herdr-send-region'   stage (or C-u submit) the region as a code block
+;;   `herdr-send-region'   stage (or C-u submit) the region or current line
 ;;   `herdr-mode'          poll timer and mode-line blocked count
 ;;
 ;; Everything goes through the `herdr' CLI (>= 0.8), never the raw socket.
@@ -551,6 +551,13 @@ workspace when there is none."
      ((string-match "\\`\\(.+\\)-mode\\'" name) (match-string 1 name))
      (t name))))
 
+(defun herdr--region-or-line-bounds ()
+  "Return (BEG END) for the active region, or the line at point.
+The line runs from `line-beginning-position' to `line-end-position'."
+  (if (use-region-p)
+      (list (region-beginning) (region-end))
+    (list (line-beginning-position) (line-end-position))))
+
 (defun herdr--format-region (beg end)
   "Format region BEG..END as a fenced code block with metadata."
   (let* ((lang (herdr--detect-language))
@@ -575,9 +582,12 @@ workspace when there is none."
 ;;;###autoload
 (defun herdr-send-region (beg end &optional submit)
   "Send region BEG..END to a Herdr agent.
-Stages the text in the agent's prompt without submitting; with prefix
-arg SUBMIT, submits it as a prompt (`herdr agent prompt')."
-  (interactive "r\nP")
+Interactively, BEG and END are the active region, or the line at point
+when no region is active.  Stages the text in the agent's prompt without
+submitting; with prefix arg SUBMIT, submits it as a prompt
+(`herdr agent prompt')."
+  (interactive
+   (append (herdr--region-or-line-bounds) (list current-prefix-arg)))
   (let* ((agent (herdr--pick-agent "Send to agent: "))
          (payload (herdr--format-region beg end))
          (ok (if submit
@@ -773,8 +783,10 @@ With prefix REATTACH, replace an existing buffer with a fresh attach."
 
 ;;;###autoload
 (defun herdr-submit-region (beg end)
-  "Send region BEG..END to an agent and submit it."
-  (interactive "r")
+  "Send region BEG..END to an agent and submit it.
+Interactively, BEG and END are the active region, or the line at point
+when no region is active."
+  (interactive (herdr--region-or-line-bounds))
   (herdr-send-region beg end t))
 
 (defun herdr--menu-description ()
@@ -804,8 +816,8 @@ With prefix REATTACH, replace an existing buffer with a fresh attach."
                   ("n" "New agent for project" herdr-new-agent)
                   ("b" herdr-goto-blocked
                    :description ,(lambda () (format "Blocked (%d)" herdr--blocked-count)))
-                  ("r" "Send region (stage)" herdr-send-region :if use-region-p)
-                  ("R" "Send region & submit" herdr-submit-region :if use-region-p)
+                  ("r" "Send region (stage)" herdr-send-region)
+                  ("R" "Send region & submit" herdr-submit-region)
                   ("m" herdr-mode
                    :description ,(lambda ()
                                    (format "Poll & mode-line (%s)"
