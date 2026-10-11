@@ -151,7 +151,9 @@ Each poll compares agent statuses with the previous one and runs
 the old status and the new one. The default, =herdr-notify=, posts a desktop
 notification (=osascript= on macOS, D-Bus elsewhere, =message= as a fallback) titled
 with the session name and new status, and the project name as the body, when the new
-status is in =herdr-notify-statuses=. It stays quiet while the agent's attach buffer
+status is in =herdr-notify-statuses=. Herdr reports the focused pane as =idle= rather
+than =done= when its agent finishes (the pane you view from Emacs is focused through
+=herdr-mark-seen=), so leaving =working= for =idle= counts as =done=. It stays quiet while the agent's attach buffer
 is in the selected window of a focused frame, since you are already watching. Agents
 seen for the first time, and the first poll after Emacs starts, do not notify.
 

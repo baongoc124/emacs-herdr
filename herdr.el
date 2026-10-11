@@ -788,14 +788,23 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
                                   (window-buffer (selected-window)))
               (alist-get 'pane-id agent))))
 
-(defun herdr-notify (agent _old new)
+(defun herdr--notify-transition-p (old new)
+  "Non-nil if going from status OLD to NEW should notify.
+Herdr reports the focused pane as `idle' rather than `done' when its
+agent finishes, so leaving `working' for `idle' counts as `done'."
+  (or (member new herdr-notify-statuses)
+      (and (equal old "working") (equal new "idle")
+           (member "done" herdr-notify-statuses))))
+
+(defun herdr-notify (agent old new)
   "Desktop notification when AGENT enters a status in `herdr-notify-statuses'.
 Quiet while you are already looking at the agent's buffer."
-  (when (and (member new herdr-notify-statuses)
+  (when (and (herdr--notify-transition-p old new)
              (not (herdr--agent-in-view-p agent)))
     (let ((cwd (alist-get 'cwd agent)))
       (herdr--system-notify
-       (format "%s: %s" (herdr--agent-display-name agent) new)
+       (format "%s: %s" (herdr--agent-display-name agent)
+               (if (equal new "idle") "done" new))
        (if (and cwd (file-directory-p cwd)) (herdr--project-name cwd) "")))))
 
 (defun herdr--notify-status-changes (old new)
