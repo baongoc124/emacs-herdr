@@ -270,10 +270,32 @@ buffers.  Pressing it again inside the menu runs `herdr-menu-repeat-command'."
            (focused (seq-find (lambda (p) (eq (alist-get 'focused p) t)) panes)))
       (alist-get 'workspace_id (or focused (car panes))))))
 
+(defun herdr--start-server ()
+  "Start `herdr server' detached from Emacs and wait until it answers."
+  (call-process-shell-command
+   (format "nohup %s server >/dev/null 2>&1 &" (shell-quote-argument herdr-executable)))
+  (message "herdr: starting server...")
+  (let ((tries 0) json)
+    (while (and (null (setq json (herdr--call-json-sync "api" "snapshot")))
+                (< tries 50))
+      (sleep-for 0.2)
+      (setq tries (1+ tries)))
+    (unless json
+      (user-error "herdr: server did not come up"))
+    (message "herdr: server started")
+    (herdr--ensure-timer)
+    json))
+
+(defun herdr--snapshot-sync ()
+  "A `herdr api snapshot' response, offering to start the server when it is down."
+  (or (herdr--call-json-sync "api" "snapshot")
+      (if (y-or-n-p "Herdr server is not running.  Start it? ")
+          (herdr--start-server)
+        (user-error "Herdr server not running"))))
+
 (defun herdr--fetch-agents-sync ()
   "Fetch agents from a live snapshot, syncing labels on the way."
-  (let ((agents (herdr--extract-agents
-                 (herdr--call-json-sync "api" "snapshot"))))
+  (let ((agents (herdr--extract-agents (herdr--snapshot-sync))))
     (herdr--sync-labels agents)
     agents))
 
@@ -686,7 +708,7 @@ workspace when there is none."
          (proj-name (herdr--project-name root))
          (kind (completing-read "Agent kind: " herdr--agent-kinds nil t
                                 nil nil herdr-default-agent-kind))
-         (json (herdr--call-json-sync "api" "snapshot"))
+         (json (herdr--snapshot-sync))
          (name (herdr--unique-agent-name
                 (herdr--sanitize-name (concat proj-name "-" kind))
                 (herdr--extract-agents json)))
