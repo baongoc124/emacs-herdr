@@ -153,7 +153,7 @@ notification titled with the session name and new status, and the project name a
 body, when the new status is in =herdr-notify-statuses=. On macOS it uses
 [[https://github.com/julienXX/terminal-notifier][terminal-notifier]] when installed (=nix profile install nixpkgs#terminal-notifier= or
 =brew install terminal-notifier=): clicking the notification raises Emacs and shows that
-agent (=herdr-show-pane=). Without it, =osascript= posts a notification that does nothing
+agent in another window, leaving the one you were in alone (=herdr-show-pane=). Without it, =osascript= posts a notification that does nothing
 when clicked. On Linux, D-Bus notifications get a click action that does the same;
 otherwise =message= is the fallback. Herdr reports the focused pane as =idle= rather
 than =done= when its agent finishes (the pane you view from Emacs is focused through

@@ -481,8 +481,15 @@ Follows `herdr-sync-workspace-labels'."
                   nil)))
             (buffer-list)))
 
-(defun herdr--create-attach-buffer (agent)
-  "Create a buffer directly attached to AGENT's pane and pop to it."
+(defconst herdr--other-window-action
+  '((display-buffer-reuse-window display-buffer-use-some-window
+     display-buffer-pop-up-window)
+    (inhibit-same-window . t))
+  "`display-buffer' action showing an agent without displacing the current window.")
+
+(defun herdr--create-attach-buffer (agent &optional action)
+  "Create a buffer directly attached to AGENT's pane and pop to it.
+ACTION is the `display-buffer' action, same window by default."
   (let* ((pane (alist-get 'pane-id agent))
          (args (append (list "agent" "attach" pane)
                        (and herdr-attach-takeover '("--takeover"))))
@@ -493,7 +500,7 @@ Follows `herdr-sync-workspace-labels'."
                   split-width-threshold nil)
       (when herdr-attach-header-line
         (setq header-line-format herdr--header-line-format)))
-    (pop-to-buffer buf '((display-buffer-same-window)))
+    (pop-to-buffer buf (or action '((display-buffer-same-window))))
     (ghostel-exec buf herdr-executable args
                   `((kind . herdr-attach)
                     (command . ,(cons herdr-executable args))))
@@ -545,17 +552,18 @@ it ready.  Returns the polling timer; it gives up after 30 seconds."
   (when (and herdr-mark-seen pane)
     (herdr--call-async #'ignore "agent" "focus" pane)))
 
-(defun herdr--attach-agent (agent &optional reattach)
+(defun herdr--attach-agent (agent &optional reattach action)
   "Pop to the buffer directly attached to AGENT, creating it if needed.
-With REATTACH, drop an existing buffer and attach afresh."
+With REATTACH, drop an existing buffer and attach afresh.  ACTION is the
+`display-buffer' action, same window by default."
   (let ((buf (herdr--find-attach-buffer (alist-get 'pane-id agent))))
     (when (and buf reattach)
       (let ((kill-buffer-query-functions nil))
         (kill-buffer buf))
       (setq buf nil))
     (if buf
-        (pop-to-buffer buf '((display-buffer-same-window)))
-      (herdr--create-attach-buffer agent))
+        (pop-to-buffer buf (or action '((display-buffer-same-window))))
+      (herdr--create-attach-buffer agent action))
     (herdr--mark-seen (alist-get 'pane-id agent))))
 
 (defun herdr--attach-buffers ()
@@ -575,22 +583,24 @@ With REATTACH, drop an existing buffer and attach afresh."
     (pop-to-buffer buf)
     (herdr--mark-seen (buffer-local-value 'herdr--attached-pane buf))))
 
-(defun herdr--show-agent (agent)
-  "Show AGENT as configured by `herdr-agent-display'."
+(defun herdr--show-agent (agent &optional action)
+  "Show AGENT as configured by `herdr-agent-display'.
+ACTION is the `display-buffer' action for an attach buffer."
   (pcase herdr-agent-display
-    ('buffer (herdr--attach-agent agent))
+    ('buffer (herdr--attach-agent agent nil action))
     (_ (herdr--call-json-sync "agent" "focus" (alist-get 'target agent))
        (herdr))))
 
 (defun herdr-show-pane (pane-id)
   "Raise Emacs and show the agent in PANE-ID per `herdr-agent-display'.
-Run from outside Emacs (a notification click) via emacsclient."
+Run from outside Emacs (a notification click) via emacsclient.  An attach
+buffer goes to another window so the one you were in stays put."
   (interactive (list (alist-get 'pane-id (herdr--pick-agent "Show agent: "))))
   (let ((agent (or (seq-find (lambda (a) (equal (alist-get 'pane-id a) pane-id))
                              herdr--agents-cache)
                    (user-error "No agent in pane %s" pane-id))))
     (select-frame-set-input-focus (selected-frame))
-    (herdr--show-agent agent)))
+    (herdr--show-agent agent herdr--other-window-action)))
 
 ;;; Commands
 
