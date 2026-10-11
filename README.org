@@ -118,6 +118,7 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-menu-key=                  | =nil=      | Global key for =herdr-menu=, e.g. ="C-9"=                  |
 | =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
 | =herdr-attach-takeover=           | =t=        | Attach with =--takeover=, replacing another attach client   |
+| =herdr-mark-seen=                 | =t=        | Focus an agent in Herdr when its buffer is shown, clearing =done= |
 | =herdr-attach-header-line=        | =t=        | Clickable strip of all agents in attach buffers' header line |
 | =herdr-header-label-width=        | =16=       | Max characters per agent label in that strip                 |
 | =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
@@ -166,6 +167,12 @@ you rename the session (e.g. =/rename= in Claude Code), the poll renames the buf
 =ctrl+b= is =ctrl+b ctrl+b=); killing the buffer detaches too. The agent keeps running in
 the Herdr server either way, and the full TUI still works alongside.
 
+Herdr keeps a finished agent in =done= (shown first in the list and strip) until an
+explicit focus marks it seen; the TUI does that when you view the pane. With
+=herdr-mark-seen= (default =t=) showing an agent's buffer, =herdr-last-agent=, and being in
+the buffer when the agent finishes all run =herdr agent focus=, which also moves the TUI,
+if attached, to that pane.
+
 Herdr allows one writable direct-attach client per terminal. With
 =herdr-attach-takeover= (default =t=) an attach from Emacs passes =--takeover= and
 replaces another client, such as =herdr agent attach= in a terminal; with it off the
@@ -180,9 +187,9 @@ To make this the default everywhere:
 #+end_src
 
 Then =herdr-switch-agent= and =herdr-goto-blocked= open the agent's buffer instead of
-focusing it in =*herdr*=, and =herdr-new-agent= attaches once the agent has started
-(=herdr agent attach= needs a live agent in the pane, so this happens a few seconds after
-the command, in the window selected at that moment).
+focusing it in =*herdr*=, and =herdr-new-agent= attaches as soon as Herdr detects the new
+agent process, usually within a second, so you watch it start; =herdr agent start=
+reports a few seconds later when it is ready for input.
 
 ** Header line
 

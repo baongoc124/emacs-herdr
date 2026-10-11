@@ -103,6 +103,13 @@ Agents are sorted by attention (blocked first); clicking one switches to it."
   "Maximum characters per agent label in the attach buffer header line."
   :type 'natnum)
 
+(defcustom herdr-mark-seen t
+  "Mark an agent seen in Herdr when its buffer is shown or you are in it.
+Herdr keeps a finished agent in `done' until an explicit focus command, so
+without this an agent viewed only from Emacs stays `done' forever.  The
+focus also moves the Herdr TUI, if attached, to that pane."
+  :type 'boolean)
+
 (defcustom herdr-attach-takeover t
   "Pass --takeover to `herdr agent attach'.
 Herdr allows one writable attach client per terminal; with this on,
@@ -392,14 +399,10 @@ Follows `herdr-sync-workspace-labels'."
 
 (defun herdr--header-label (agent)
   "Short label for AGENT: status glyph and a truncated session name."
-  (let* ((status (alist-get 'status agent))
-         (session (alist-get 'session agent))
-         (who (or (and session (not (string-empty-p session)) session)
-                  (alist-get 'name agent)
-                  (alist-get 'pane-id agent))))
-    (format " %s %s "
-            (or (cdr (assoc status herdr--status-glyphs)) "?")
-            (truncate-string-to-width who herdr-header-label-width nil nil "…"))))
+  (format " %s %s "
+          (or (cdr (assoc (alist-get 'status agent) herdr--status-glyphs)) "?")
+          (truncate-string-to-width (herdr--agent-display-name agent)
+                                    herdr-header-label-width nil nil "…")))
 
 (defun herdr--header-click-command (agent)
   "Command switching to AGENT in the clicked window."
@@ -445,13 +448,17 @@ Follows `herdr-sync-workspace-labels'."
 
 ;;; Direct attach (one buffer per agent)
 
+(defun herdr--agent-display-name (agent)
+  "Session name of AGENT unless generic, else its agent name, else pane id."
+  (let ((session (alist-get 'session agent)))
+    (or (and session (not (herdr--generic-title-p session (alist-get 'kind agent)))
+             session)
+        (alist-get 'name agent)
+        (alist-get 'pane-id agent))))
+
 (defun herdr--attach-buffer-name (agent)
   "Buffer name for a direct attach to AGENT: \"*herdr: session*\"."
-  (let ((session (alist-get 'session agent)))
-    (format "*herdr: %s*"
-            (or (and session (not (string-empty-p session)) session)
-                (alist-get 'name agent)
-                (alist-get 'pane-id agent)))))
+  (format "*herdr: %s*" (herdr--agent-display-name agent)))
 
 (defun herdr--find-attach-buffer (pane-id)
   "Live buffer directly attached to PANE-ID, or nil.  Dead ones are killed."
@@ -481,6 +488,16 @@ Follows `herdr-sync-workspace-labels'."
                     (command . ,(cons herdr-executable args))))
     buf))
 
+(defun herdr--mark-current-seen (agents)
+  "Mark seen a `done' agent whose attach buffer is in the selected window."
+  (let ((pane (buffer-local-value 'herdr--attached-pane
+                                  (window-buffer (selected-window)))))
+    (when (and pane
+               (seq-find (lambda (a) (and (equal (alist-get 'pane-id a) pane)
+                                          (equal (alist-get 'status a) "done")))
+                         agents))
+      (herdr--mark-seen pane))))
+
 (defun herdr--sync-attach-buffer-names (agents)
   "Rename live attach buffers whose AGENTS session name changed."
   (dolist (agent agents)
@@ -490,6 +507,32 @@ Follows `herdr-sync-workspace-labels'."
       (unless (equal (buffer-name buf) name)
         (with-current-buffer buf
           (rename-buffer name t))))))
+
+(defun herdr--attach-when-detected (pane name window)
+  "Attach to PANE as agent NAME in WINDOW once herdr detects an agent there.
+`agent attach' resolves its target through the agent record, which
+appears when the process is detected, well before `agent start' reports
+it ready.  Returns the polling timer; it gives up after 30 seconds."
+  (let ((timer nil) (tries 0))
+    (setq timer
+          (run-with-timer
+           0.3 0.3
+           (lambda ()
+             (setq tries (1+ tries))
+             (cond
+              ((herdr--call-json-sync "agent" "get" pane)
+               (cancel-timer timer)
+               (when (window-live-p window)
+                 (select-window window))
+               (herdr--attach-agent `((pane-id . ,pane) (name . ,name))))
+              ((> tries 100)
+               (cancel-timer timer))))))
+    timer))
+
+(defun herdr--mark-seen (pane)
+  "Tell Herdr the agent in PANE has been seen, when `herdr-mark-seen'."
+  (when (and herdr-mark-seen pane)
+    (herdr--call-async #'ignore "agent" "focus" pane)))
 
 (defun herdr--attach-agent (agent &optional reattach)
   "Pop to the buffer directly attached to AGENT, creating it if needed.
@@ -501,7 +544,8 @@ With REATTACH, drop an existing buffer and attach afresh."
       (setq buf nil))
     (if buf
         (pop-to-buffer buf '((display-buffer-same-window)))
-      (herdr--create-attach-buffer agent))))
+      (herdr--create-attach-buffer agent))
+    (herdr--mark-seen (alist-get 'pane-id agent))))
 
 (defun herdr--attach-buffers ()
   "Live attach buffers, most recently selected first."
@@ -517,7 +561,8 @@ With REATTACH, drop an existing buffer and attach afresh."
   (let ((buf (or (seq-find (lambda (b) (not (eq b (current-buffer))))
                            (herdr--attach-buffers))
                  (user-error "No other agent buffer"))))
-    (pop-to-buffer buf)))
+    (pop-to-buffer buf)
+    (herdr--mark-seen (buffer-local-value 'herdr--attached-pane buf))))
 
 (defun herdr--show-agent (agent)
   "Show AGENT as configured by `herdr-agent-display'."
@@ -611,17 +656,20 @@ workspace when there is none."
          (pane (alist-get 'pane_id (alist-get 'root_pane created))))
     (unless pane
       (user-error "Failed to create herdr %s" (if ws "tab" "workspace")))
-    (herdr--call-async
-     (lambda (result)
-       (message "herdr: %s %s in %s"
-                (if result "started" "FAILED to start") name pane)
-       ;; `agent attach' needs a live agent in the pane, so attach only
-       ;; once the start has succeeded.
-       (when (and result (eq herdr-agent-display 'buffer))
-         (herdr--attach-agent `((pane-id . ,pane) (name . ,name)))))
-     "agent" "start" name "--kind" kind "--pane" pane)
-    (unless (eq herdr-agent-display 'buffer)
-      (herdr))))
+    (message "herdr: starting %s in %s..." name pane)
+    ;; `agent start' returns only once the agent is ready, several seconds
+    ;; later; attach as soon as it is detected instead of waiting for that.
+    (let ((timer (if (eq herdr-agent-display 'buffer)
+                     (herdr--attach-when-detected pane name (selected-window))
+                   (herdr)
+                   nil)))
+      (herdr--call-async
+       (lambda (result)
+         (unless (or result (null timer))
+           (cancel-timer timer))
+         (message "herdr: %s %s in %s"
+                  (if result "started" "FAILED to start") name pane))
+       "agent" "start" name "--kind" kind "--pane" pane))))
 
 ;;; Send region
 
@@ -696,26 +744,38 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
   "Refresh the blocked count (and workspace labels) from a snapshot."
   (when (and herdr--poll-timer (not herdr--poll-in-flight))
     (setq herdr--poll-in-flight t)
-    (herdr--call-async
-     (lambda (json)
+    (condition-case err
+        (herdr--poll-start)
+      (error
+       ;; e.g. "Too many open files": keep polling rather than wedging.
        (setq herdr--poll-in-flight nil)
-       (if (null json)
-           (progn
-             (setq herdr--blocked-count 0)
-             (unless herdr--poll-error-notified
-               (setq herdr--poll-error-notified t)
-               (message "herdr: herdr not reachable, polling paused"))
-             (herdr--stop-timer))
-         (setq herdr--poll-error-notified nil)
-         (let ((agents (herdr--extract-agents json)))
-           (setq herdr--blocked-count
-                 (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
-           (setq herdr--agents-cache (herdr--sort-agents agents))
-           (herdr--sync-labels agents)
-           (herdr--sync-attach-buffer-names agents)
-           (herdr--agents-render agents)))
-       (force-mode-line-update t))
-     "api" "snapshot")))
+       (unless herdr--poll-error-notified
+         (setq herdr--poll-error-notified t)
+         (message "herdr: poll failed: %s" (error-message-string err)))))))
+
+(defun herdr--poll-start ()
+  "Launch the snapshot request behind `herdr--poll'."
+  (herdr--call-async
+   (lambda (json)
+     (setq herdr--poll-in-flight nil)
+     (if (null json)
+         (progn
+           (setq herdr--blocked-count 0)
+           (unless herdr--poll-error-notified
+             (setq herdr--poll-error-notified t)
+             (message "herdr: herdr not reachable, polling paused"))
+           (herdr--stop-timer))
+       (setq herdr--poll-error-notified nil)
+       (let ((agents (herdr--extract-agents json)))
+         (setq herdr--blocked-count
+               (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
+         (setq herdr--agents-cache (herdr--sort-agents agents))
+         (herdr--sync-labels agents)
+         (herdr--sync-attach-buffer-names agents)
+         (herdr--mark-current-seen agents)
+         (herdr--agents-render agents)))
+     (force-mode-line-update t))
+   "api" "snapshot"))
 
 (defun herdr--ensure-timer ()
   "Start the poll timer if not running."
