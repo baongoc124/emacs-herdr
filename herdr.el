@@ -915,6 +915,7 @@ Quiet while you are already looking at the agent's buffer."
 (defvar-keymap herdr-agents-mode-map
   :parent tabulated-list-mode-map
   "RET" #'herdr-agents-show
+  "<mouse-1>" #'herdr-agents-mouse-show
   "a" #'herdr-agents-attach
   "n" #'next-line
   "p" #'previous-line
@@ -924,8 +925,8 @@ Quiet while you are already looking at the agent's buffer."
 
 (define-derived-mode herdr-agents-mode tabulated-list-mode "Herdr-Agents"
   "Live list of Herdr agents, refreshed by the `herdr-mode' poll.
-RET shows the agent (see `herdr-agent-display'), `a' attaches it in a buffer,
-`s' asks which column to sort by."
+RET or mouse-1 shows the agent (see `herdr-agent-display'), `a' attaches it
+in a buffer, `s' asks which column to sort by."
   (setq tabulated-list-format [("Status" 8 t)
                                ("Session" 60 t)
                                ("Kind" 7 t)
@@ -952,9 +953,11 @@ RET shows the agent (see `herdr-agent-display'), `a' attaches it in a buffer,
          (pane (alist-get 'pane-id agent)))
     (list pane
           (vector (propertize status 'face (herdr--status-face status))
-                  (or (and session (not (string-empty-p session)) session)
-                      (alist-get 'name agent)
-                      pane)
+                  (propertize (or (and session (not (string-empty-p session)) session)
+                                  (alist-get 'name agent)
+                                  pane)
+                              'mouse-face 'highlight
+                              'help-echo "mouse-1: show this agent here")
                   (or (alist-get 'kind agent) "")
                   (if cwd (herdr--project-name cwd) "")
                   pane))))
@@ -1004,6 +1007,14 @@ The attention entry restores the default blocked-first order."
     ;; rebuild it before printing in the new order.
     (herdr--agents-revert)
     (tabulated-list-print t)))
+
+(defun herdr-agents-mouse-show (event)
+  "Show the agent on the clicked line, in the clicked window."
+  (interactive "e")
+  (let ((pos (event-start event)))
+    (select-window (posn-window pos))
+    (goto-char (posn-point pos))
+    (herdr-agents-show)))
 
 (defun herdr-agents-show (&optional reattach)
   "Show the agent at point in this window, per `herdr-agent-display'.

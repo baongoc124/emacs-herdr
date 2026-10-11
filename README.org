@@ -246,8 +246,8 @@ long session names.
 
 =herdr-agents= opens =*herdr-agents*= in the current window, a =tabulated-list-mode= buffer with one row per
 agent (status, session, kind, project, pane), sorted like the picker and redrawn on every
-poll while it exists, keeping point on the same agent. =RET= shows the agent at point in
-the list's own window per =herdr-agent-display=, =a= always attaches in a buffer, =n= / =p=
+poll while it exists, keeping point on the same agent. =RET=, or clicking a row, shows the
+agent in the list's own window per =herdr-agent-display=, =a= always attaches in a buffer, =n= / =p=
 move, =s= asks which column to sort by (the same column again reverses; =attention=
 restores the default order), =c= starts a new agent for the current project, =o= opens the TUI, =g=
 refreshes, =q= quits. To open the list in a left-hand side window (not dedicated, so
