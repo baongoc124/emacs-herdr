@@ -582,6 +582,16 @@ With REATTACH, drop an existing buffer and attach afresh."
     (_ (herdr--call-json-sync "agent" "focus" (alist-get 'target agent))
        (herdr))))
 
+(defun herdr-show-pane (pane-id)
+  "Raise Emacs and show the agent in PANE-ID per `herdr-agent-display'.
+Run from outside Emacs (a notification click) via emacsclient."
+  (interactive (list (alist-get 'pane-id (herdr--pick-agent "Show agent: "))))
+  (let ((agent (or (seq-find (lambda (a) (equal (alist-get 'pane-id a) pane-id))
+                             herdr--agents-cache)
+                   (user-error "No agent in pane %s" pane-id))))
+    (select-frame-set-input-focus (selected-frame))
+    (herdr--show-agent agent)))
+
 ;;; Commands
 
 ;;;###autoload
@@ -766,9 +776,17 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
          (setq herdr--poll-error-notified t)
          (message "herdr: poll failed: %s" (error-message-string err)))))))
 
-(defun herdr--system-notify (title body)
-  "Show TITLE and BODY as a desktop notification, else `message' them."
+(defun herdr--system-notify (title body &optional on-click)
+  "Show TITLE and BODY as a desktop notification, else `message' them.
+ON-CLICK is a shell command run when the notification is clicked; only
+terminal-notifier supports it, osascript notifications are inert."
   (cond
+   ((and (eq system-type 'darwin) (executable-find "terminal-notifier"))
+    (make-process
+     :name "herdr-notify" :noquery t
+     :command `("terminal-notifier" "-title" ,title "-message" ,(if (string-empty-p body) " " body)
+                "-activate" "org.gnu.Emacs"
+                ,@(and on-click (list "-execute" on-click)))))
    ((eq system-type 'darwin)
     (make-process
      :name "herdr-notify" :noquery t
@@ -805,7 +823,15 @@ Quiet while you are already looking at the agent's buffer."
       (herdr--system-notify
        (format "%s: %s" (herdr--agent-display-name agent)
                (if (equal new "idle") "done" new))
-       (if (and cwd (file-directory-p cwd)) (herdr--project-name cwd) "")))))
+       (if (and cwd (file-directory-p cwd)) (herdr--project-name cwd) "")
+       (herdr--show-pane-command (alist-get 'pane-id agent))))))
+
+(defun herdr--show-pane-command (pane-id)
+  "Shell command that makes this Emacs show the agent in PANE-ID."
+  (format "%s -s %s --eval %s"
+          (shell-quote-argument (or (executable-find "emacsclient") "emacsclient"))
+          (shell-quote-argument (or (bound-and-true-p server-name) "server"))
+          (shell-quote-argument (format "(herdr-show-pane %S)" pane-id))))
 
 (defun herdr--notify-status-changes (old new)
   "Run `herdr-status-change-functions' for agents in NEW whose status differs in OLD."

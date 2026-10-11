@@ -149,9 +149,12 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 Each poll compares agent statuses with the previous one and runs
 =herdr-status-change-functions= for every agent whose status changed, with the agent,
 the old status and the new one. The default, =herdr-notify=, posts a desktop
-notification (=osascript= on macOS, D-Bus elsewhere, =message= as a fallback) titled
-with the session name and new status, and the project name as the body, when the new
-status is in =herdr-notify-statuses=. Herdr reports the focused pane as =idle= rather
+notification titled with the session name and new status, and the project name as the
+body, when the new status is in =herdr-notify-statuses=. On macOS it uses
+[[https://github.com/julienXX/terminal-notifier][terminal-notifier]] when installed (=nix profile install nixpkgs#terminal-notifier= or
+=brew install terminal-notifier=): clicking the notification raises Emacs and shows that
+agent (=herdr-show-pane=). Without it, =osascript= posts a notification that does nothing
+when clicked. Elsewhere D-Bus is used, with =message= as the fallback. Herdr reports the focused pane as =idle= rather
 than =done= when its agent finishes (the pane you view from Emacs is focused through
 =herdr-mark-seen=), so leaving =working= for =idle= counts as =done=. It stays quiet while the agent's attach buffer
 is in the selected window of a focused frame, since you are already watching. Agents
