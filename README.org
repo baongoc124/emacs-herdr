@@ -195,8 +195,8 @@ directory. Each tab becomes the agent's terminal title when that is a session na
 rather than a generic default (empty, "claude code", or the agent kind); a title that
 changes later renames the tab again on the next poll.
 
-Polling stops by itself when the Herdr server is unreachable (one message, no spam)
-and resumes the next time you run =herdr=. Commands that need the server — the picker,
+Polling keeps going when the Herdr server is unreachable (one message when it goes,
+one when it is back, no spam) and picks up where it left off. Commands that need the server — the picker,
 the agent list, =herdr-new-agent=, =herdr-goto-blocked= — offer to start it when it is
 down; it runs as =herdr server=, detached from Emacs, so it outlives the session.
 

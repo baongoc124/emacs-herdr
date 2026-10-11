@@ -904,8 +904,9 @@ Quiet while you are already looking at the agent's buffer."
            (setq herdr--blocked-count 0)
            (unless herdr--poll-error-notified
              (setq herdr--poll-error-notified t)
-             (message "herdr: herdr not reachable, polling paused"))
-           (herdr--stop-timer))
+             (message "herdr: herdr not reachable, will keep trying")))
+       (when herdr--poll-error-notified
+         (message "herdr: reachable again"))
        (setq herdr--poll-error-notified nil)
        (let ((agents (herdr--extract-agents json)))
          (setq herdr--blocked-count
