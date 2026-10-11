@@ -24,14 +24,7 @@ Everything goes through the =herdr= CLI. The raw socket API is never used.
   :vc (:url "https://github.com/baongoc124/emacs-herdr")
   :hook (after-init . herdr-mode)
   :custom ((herdr-menu-key "C-9")
-           ;; These rewrite names that already exist on the Herdr server.
-           ;; Each workspace becomes the project.el name of its first
-           ;; agent's directory; Herdr records only that new name.
-           ;; Each tab becomes the agent's terminal title when the title
-           ;; is a session name rather than a generic default (empty,
-           ;; "claude code", or the agent kind). A title that changes,
-           ;; including a live status prefix, renames the tab again on
-           ;; the next poll.
+           ;; Opt in: rewrites existing workspace/tab names on the server.
            (herdr-sync-workspace-labels 'project)
            (herdr-sync-tab-labels t)))
 #+end_src
@@ -150,9 +143,14 @@ Example:
         (lambda (name) (string-remove-prefix "acme-" name)))
 #+end_src
 
-Label sync follows Herdr's model — one workspace per project, one tab per agent: the
-workspace carries the project name and each agent's tab carries its session name
-(e.g. what =/rename= sets in Claude Code), so the tab bar tells the tasks apart.
+Label sync is off by default. It follows Herdr's model — one workspace per project,
+one tab per agent: the workspace carries the project name and each agent's tab carries
+its session name (e.g. what =/rename= sets in Claude Code), so the tab bar tells the
+tasks apart. It rewrites names that already exist on the Herdr server, and the old names
+are not kept. Each workspace becomes the project.el name of its first agent's
+directory. Each tab becomes the agent's terminal title when that is a session name
+rather than a generic default (empty, "claude code", or the agent kind); a title that
+changes later renames the tab again on the next poll.
 
 Polling stops by itself when the Herdr server is unreachable (one message, no spam)
 and resumes the next time you run =herdr=.
