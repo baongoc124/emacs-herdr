@@ -776,17 +776,17 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
          (setq herdr--poll-error-notified t)
          (message "herdr: poll failed: %s" (error-message-string err)))))))
 
-(defun herdr--system-notify (title body &optional on-click)
+(defun herdr--system-notify (title body &optional pane-id)
   "Show TITLE and BODY as a desktop notification, else `message' them.
-ON-CLICK is a shell command run when the notification is clicked; only
-terminal-notifier supports it, osascript notifications are inert."
+With PANE-ID, clicking the notification shows that agent (`herdr-show-pane');
+terminal-notifier and D-Bus support this, osascript notifications are inert."
   (cond
    ((and (eq system-type 'darwin) (executable-find "terminal-notifier"))
     (make-process
      :name "herdr-notify" :noquery t
      :command `("terminal-notifier" "-title" ,title "-message" ,(if (string-empty-p body) " " body)
                 "-activate" "org.gnu.Emacs"
-                ,@(and on-click (list "-execute" on-click)))))
+                ,@(and pane-id (list "-execute" (herdr--show-pane-command pane-id))))))
    ((eq system-type 'darwin)
     (make-process
      :name "herdr-notify" :noquery t
@@ -796,7 +796,10 @@ terminal-notifier supports it, osascript notifications are inert."
                     "-e" "end run"
                     title body)))
    ((and (featurep 'dbusbind) (require 'notifications nil t))
-    (notifications-notify :title title :body body))
+    (notifications-notify :title title :body body
+                          :actions (and pane-id '("default" "Show agent"))
+                          :on-action (and pane-id
+                                          (lambda (_id _key) (herdr-show-pane pane-id)))))
    (t (message "%s: %s" title body))))
 
 (defun herdr--agent-in-view-p (agent)
@@ -824,7 +827,7 @@ Quiet while you are already looking at the agent's buffer."
        (format "%s: %s" (herdr--agent-display-name agent)
                (if (equal new "idle") "done" new))
        (if (and cwd (file-directory-p cwd)) (herdr--project-name cwd) "")
-       (herdr--show-pane-command (alist-get 'pane-id agent))))))
+       (alist-get 'pane-id agent)))))
 
 (defun herdr--show-pane-command (pane-id)
   "Shell command that makes this Emacs show the agent in PANE-ID."
