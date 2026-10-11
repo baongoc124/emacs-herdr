@@ -3,12 +3,35 @@
 Emacs integration for [[https://herdr.dev][Herdr]], a tmux-like terminal multiplexer for AI coding agents.
 
 Herdr's full TUI, mouse UI included, runs in one [[https://github.com/dakra/ghostel][Ghostel]] buffer. Emacs adds the
-few things the mouse is slow at: a transient menu, an attention-sorted agent picker,
-one-key "start an agent for this project", a blocked-agent indicator in the mode-line,
-and sending the active region or the current line to an agent as a fenced code
-block with file/line/branch context.
+few things the mouse is slow at. Everything goes through the =herdr= CLI; the raw socket
+API is never used.
 
-Everything goes through the =herdr= CLI. The raw socket API is never used.
+* What you get
+
+- The Herdr TUI in a buffer (=herdr=, =herdr-toggle=), and a transient menu on one key
+  (=herdr-menu=) for everything below.
+- An attention-sorted agent picker (=herdr-switch-agent=): blocked first, then done,
+  working, idle.
+- One-key "start an agent for this project" (=herdr-new-agent=): a new tab in the
+  project's workspace, or a new workspace, named from =project.el=.
+- A mode-line count of agents waiting for input, and =herdr-goto-blocked= to jump to
+  the first one.
+- Sending the region, or the line at point, to an agent as a fenced code block with
+  file, line range, project and branch (=herdr-send-region=, =herdr-submit-region=).
+- One buffer per agent, no sidebar (=herdr-attach-agent=): each agent streams into its
+  own =*herdr: <session>*= buffer, with a clickable, attention-sorted strip of all
+  agents in the header line and a live agent list (=herdr-agents=).
+
+Two ways to work with it:
+
+- *TUI in a window.* Keep =*herdr*= in a dedicated window (see Window placement) and
+  use Emacs for the shortcuts: the menu to start an agent for the project you are
+  editing, the picker or =b= to jump to whoever is blocked, =r= / =R= to send code from
+  the buffer you are in.
+- *Agents as buffers.* Set =herdr-agent-display= to ='buffer= and skip the sidebar: every
+  agent is an ordinary Emacs buffer you reach with =herdr-last-agent=, the header
+  strip, the picker or the agent list, and the mode-line still tells you when someone
+  is waiting. The TUI stays available alongside for layout and mouse work.
 
 * Requirements
 
