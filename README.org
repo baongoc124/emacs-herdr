@@ -14,8 +14,8 @@ API is never used.
   working, idle.
 - One-key "start an agent for this project" (=herdr-new-agent=): a new tab in the
   project's workspace, or a new workspace, named from =project.el=.
-- A mode-line count of agents waiting for input, and =herdr-goto-blocked= to jump to
-  the first one.
+- A mode-line count of agents waiting for input, =herdr-goto-blocked= to jump to the
+  first one, and a desktop notification when an agent blocks or finishes.
 - Sending the region, or the line at point, to an agent as a fenced code block with
   file, line range, project and branch (=herdr-send-region=, =herdr-submit-region=).
 - One buffer per agent, no sidebar (=herdr-attach-agent=): each agent streams into its
@@ -136,11 +136,24 @@ submitting uses =herdr agent prompt=, which is refused while the agent is blocke
 | =herdr-agent-display=             | ='tui=     | Where switch/blocked/new show an agent: ='tui= or ='buffer= |
 | =herdr-attach-takeover=           | =t=        | Attach with =--takeover=, replacing another attach client   |
 | =herdr-mark-seen=                 | =t=        | Focus an agent in Herdr when its buffer is shown, clearing =done= |
+| =herdr-notify-statuses=           | =("blocked" "done")= | Statuses that trigger a desktop notification          |
+| =herdr-status-change-functions=   | =(herdr-notify)= | Run on every status change with =(agent old new)=     |
 | =herdr-attach-header-line=        | =t=        | Clickable strip of all agents in attach buffers' header line |
 | =herdr-header-label-width=        | =16=       | Max characters per agent label in that strip                 |
 | =herdr-menu-repeat-command=       | =herdr-toggle= | What the menu key does when pressed again: TUI or =herdr-agents= |
 | =herdr-sync-workspace-labels=     | =nil=      | Rename each agent's workspace: ='project=, ='project-session=, or =nil= |
 | =herdr-sync-tab-labels=           | =nil=      | Rename each agent's tab to its session name                |
+
+** Notifications
+
+Each poll compares agent statuses with the previous one and runs
+=herdr-status-change-functions= for every agent whose status changed, with the agent,
+the old status and the new one. The default, =herdr-notify=, posts a desktop
+notification (=osascript= on macOS, D-Bus elsewhere, =message= as a fallback) titled
+with the session name and new status, and the project name as the body, when the new
+status is in =herdr-notify-statuses=. It stays quiet while the agent's attach buffer
+is in the selected window of a focused frame, since you are already watching. Agents
+seen for the first time, and the first poll after Emacs starts, do not notify.
 
 ** Window placement
 

@@ -37,7 +37,7 @@
 ;;   `herdr-new-agent'     start an agent for the project (new tab or workspace)
 ;;   `herdr-goto-blocked'  focus the first agent waiting for input
 ;;   `herdr-send-region'   stage (or C-u submit) the region or current line
-;;   `herdr-mode'          poll timer and mode-line blocked count
+;;   `herdr-mode'          poll timer, mode-line blocked count, notifications
 ;;
 ;; Everything goes through the `herdr' CLI (>= 0.8), never the raw socket.
 
@@ -116,6 +116,17 @@ Herdr allows one writable attach client per terminal; with this on,
 attaching from Emacs replaces another client (e.g. a terminal), and
 without it the attach is refused and the buffer closes at once."
   :type 'boolean)
+
+(defcustom herdr-notify-statuses '("blocked" "done")
+  "Statuses an agent entering which `herdr-notify' reports."
+  :type '(repeat string))
+
+(defcustom herdr-status-change-functions '(herdr-notify)
+  "Functions run when an agent's status changes between two polls.
+Each is called with the agent alist, the old status and the new status.
+An agent seen for the first time is not a change."
+  :type 'hook
+  :options '(herdr-notify))
 
 (defun herdr--bind-menu-key (key bind)
   "Bind KEY to `herdr-menu' globally and in Ghostel, or unbind when BIND is nil."
@@ -755,6 +766,49 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
          (setq herdr--poll-error-notified t)
          (message "herdr: poll failed: %s" (error-message-string err)))))))
 
+(defun herdr--system-notify (title body)
+  "Show TITLE and BODY as a desktop notification, else `message' them."
+  (cond
+   ((eq system-type 'darwin)
+    (make-process
+     :name "herdr-notify" :noquery t
+     :command (list "osascript"
+                    "-e" "on run argv"
+                    "-e" "display notification (item 2 of argv) with title (item 1 of argv)"
+                    "-e" "end run"
+                    title body)))
+   ((and (featurep 'dbusbind) (require 'notifications nil t))
+    (notifications-notify :title title :body body))
+   (t (message "%s: %s" title body))))
+
+(defun herdr--agent-in-view-p (agent)
+  "Non-nil when AGENT's attach buffer is in the selected window of a focused frame."
+  (and (eq (frame-focus-state) t)
+       (equal (buffer-local-value 'herdr--attached-pane
+                                  (window-buffer (selected-window)))
+              (alist-get 'pane-id agent))))
+
+(defun herdr-notify (agent _old new)
+  "Desktop notification when AGENT enters a status in `herdr-notify-statuses'.
+Quiet while you are already looking at the agent's buffer."
+  (when (and (member new herdr-notify-statuses)
+             (not (herdr--agent-in-view-p agent)))
+    (let ((cwd (alist-get 'cwd agent)))
+      (herdr--system-notify
+       (format "%s: %s" (herdr--agent-display-name agent) new)
+       (if (and cwd (file-directory-p cwd)) (herdr--project-name cwd) "")))))
+
+(defun herdr--notify-status-changes (old new)
+  "Run `herdr-status-change-functions' for agents in NEW whose status differs in OLD."
+  (dolist (agent new)
+    (when-let* ((prev (seq-find (lambda (a) (equal (alist-get 'pane-id a)
+                                                   (alist-get 'pane-id agent)))
+                                old)))
+      (let ((was (alist-get 'status prev))
+            (now (alist-get 'status agent)))
+        (unless (equal was now)
+          (run-hook-with-args 'herdr-status-change-functions agent was now))))))
+
 (defun herdr--poll-start ()
   "Launch the snapshot request behind `herdr--poll'."
   (herdr--call-async
@@ -771,6 +825,7 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
        (let ((agents (herdr--extract-agents json)))
          (setq herdr--blocked-count
                (seq-count (lambda (a) (equal (alist-get 'status a) "blocked")) agents))
+         (herdr--notify-status-changes herdr--agents-cache agents)
          (setq herdr--agents-cache (herdr--sort-agents agents))
          (herdr--sync-labels agents)
          (herdr--sync-attach-buffer-names agents)
