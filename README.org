@@ -94,8 +94,8 @@ when you are already in it. Set it to =herdr-agents= to open the agent list inst
 | =a=     | Attach agent in buffer                   |
 | =n=     | New agent for project                    |
 | =b=     | Blocked (shows the live count)           |
-| =r=     | Send region (stage) — region, or the line at point; file buffers only |
-| =R=     | Send region & submit — region, or the line at point; file buffers only |
+| =r=     | Send region (stage) — region, or the line at point |
+| =R=     | Send region & submit — region, or the line at point |
 | =m=     | Toggle =herdr-mode= (poll & mode-line; shows on/off) |
 
 ** Agent picker
@@ -107,9 +107,8 @@ Claude Code), the agent kind, its working directory and pane id.
 ** Sending a region
 
 An active region is sent as-is. With no active region, the whole line at
-point is sent, and the fence's line range is that single line. The menu offers =r= and
-=R= only with an active region or in a file-visiting buffer, so they stay out of the
-way in =*herdr*=, attach buffers and the agent list.
+point is sent, and the fence's line range is that single line. A blank region or line is
+refused before an agent is asked for.
 
 The payload is a fenced block with language (from =major-mode=), project-relative path,
 line range, project root and git branch:

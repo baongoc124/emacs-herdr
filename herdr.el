@@ -681,10 +681,6 @@ workspace when there is none."
      ((string-match "\\`\\(.+\\)-mode\\'" name) (match-string 1 name))
      (t name))))
 
-(defun herdr--region-or-line-p ()
-  "Non-nil when there is something sensible to send: a region, or a file's line."
-  (or (use-region-p) buffer-file-name))
-
 (defun herdr--region-or-line-bounds ()
   "Return (BEG END) for the active region, or the line at point.
 The line runs from `line-beginning-position' to `line-end-position'."
@@ -722,6 +718,8 @@ submitting; with prefix arg SUBMIT, submits it as a prompt
 (`herdr agent prompt')."
   (interactive
    (append (herdr--region-or-line-bounds) (list current-prefix-arg)))
+  (when (string-match-p "\\`[[:space:]]*\\'" (buffer-substring-no-properties beg end))
+    (user-error "Nothing to send"))
   (let* ((agent (herdr--pick-agent "Send to agent: "))
          (payload (herdr--format-region beg end))
          (ok (if submit
@@ -964,10 +962,8 @@ when no region is active."
                   ("n" "New agent for project" herdr-new-agent)
                   ("b" herdr-goto-blocked
                    :description ,(lambda () (format "Blocked (%d)" herdr--blocked-count)))
-                  ("r" "Send region (stage)" herdr-send-region
-                   :if herdr--region-or-line-p)
-                  ("R" "Send region & submit" herdr-submit-region
-                   :if herdr--region-or-line-p)
+                  ("r" "Send region (stage)" herdr-send-region)
+                  ("R" "Send region & submit" herdr-submit-region)
                   ("m" herdr-mode
                    :description ,(lambda ()
                                    (format "Poll & mode-line (%s)"
