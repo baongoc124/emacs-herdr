@@ -237,7 +237,8 @@ reports a few seconds later when it is ready for input.
 Attach buffers carry a header line listing every agent, sorted by attention, as
 =glyph session= segments (=●= blocked, =✓= done, =◐= working, =·= idle); the current agent is
 highlighted. Click a segment to switch to that agent in the same window. Agents that
-do not fit the window width are counted in a trailing =+N= marker; the attention sort
+do not fit the window width are counted in a trailing =+N= marker, which opens the agent
+list when clicked; the attention sort
 keeps the ones needing you visible. It refreshes with the poll; =herdr-attach-header-line= turns it off, =herdr-header-label-width= trims
 long session names.
 

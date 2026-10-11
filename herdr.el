@@ -439,6 +439,21 @@ Follows `herdr-sync-workspace-labels'."
                 'pointer 'hand
                 'local-map map)))
 
+(defun herdr--header-overflow (dropped)
+  "Header-line \"+N\" marker for DROPPED hidden agents; clicking opens the agent list."
+  (let ((map (make-sparse-keymap)))
+    (define-key map [header-line mouse-1]
+                (lambda (event)
+                  (interactive "e")
+                  (select-window (posn-window (event-start event)))
+                  (herdr-agents)))
+    (propertize (format " +%d" dropped)
+                'face 'shadow
+                'mouse-face (list 'highlight)
+                'help-echo (format "%d more agents; click for the agent list" dropped)
+                'pointer 'hand
+                'local-map map)))
+
 (defun herdr--header-line ()
   "Header-line string: as many agents as fit the window, then a \"+N\" marker."
   (let ((width (window-width)) (row "") (dropped 0))
@@ -451,7 +466,7 @@ Follows `herdr-sync-workspace-labels'."
           (setq row (concat row " " seg)))
          (t (setq dropped (1+ dropped))))))
     (if (> dropped 0)
-        (concat row (propertize (format " +%d" dropped) 'face 'shadow))
+        (concat row (herdr--header-overflow dropped))
       row)))
 
 (defvar herdr--header-line-format '(:eval (herdr--header-line))
