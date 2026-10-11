@@ -681,6 +681,10 @@ workspace when there is none."
      ((string-match "\\`\\(.+\\)-mode\\'" name) (match-string 1 name))
      (t name))))
 
+(defun herdr--region-or-line-p ()
+  "Non-nil when there is something sensible to send: a region, or a file's line."
+  (or (use-region-p) buffer-file-name))
+
 (defun herdr--region-or-line-bounds ()
   "Return (BEG END) for the active region, or the line at point.
 The line runs from `line-beginning-position' to `line-end-position'."
@@ -960,8 +964,10 @@ when no region is active."
                   ("n" "New agent for project" herdr-new-agent)
                   ("b" herdr-goto-blocked
                    :description ,(lambda () (format "Blocked (%d)" herdr--blocked-count)))
-                  ("r" "Send region (stage)" herdr-send-region)
-                  ("R" "Send region & submit" herdr-submit-region)
+                  ("r" "Send region (stage)" herdr-send-region
+                   :if herdr--region-or-line-p)
+                  ("R" "Send region & submit" herdr-submit-region
+                   :if herdr--region-or-line-p)
                   ("m" herdr-mode
                    :description ,(lambda ()
                                    (format "Poll & mode-line (%s)"
