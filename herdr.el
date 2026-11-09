@@ -1131,7 +1131,8 @@ when no region is active."
 (transient-define-prefix herdr-menu ()
   "Herdr commands.  Pressing `herdr-menu-key' again runs
 `herdr-menu-repeat-command'."
-  [:description herdr--menu-description
+  [:class transient-column
+   :description herdr--menu-description
    :setup-children herdr--menu-children]
   (interactive)
   (setq herdr--menu-repeat-key
